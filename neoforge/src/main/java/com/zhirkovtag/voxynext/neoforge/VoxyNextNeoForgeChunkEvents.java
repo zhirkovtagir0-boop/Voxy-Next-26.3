@@ -29,7 +29,7 @@ public final class VoxyNextNeoForgeChunkEvents {
         Minecraft client = Minecraft.getInstance();
         if (client.level == null || client.player == null || (++refreshTicks % 10) != 0) return;
         String serverKey = client.getCurrentServer() == null ? "singleplayer" : client.getCurrentServer().ip;
-        String dimensionKey = client.level.dimension().location().toString();
+        String dimensionKey = client.level.dimension().identifier().toString();
         String safeKey = (serverKey + "_" + dimensionKey).replaceAll("[^a-zA-Z0-9._-]", "_");
         VoxyNextNeoForge.ENGINE.attachStore(client.gameDirectory.toPath().resolve("voxy_next").resolve(safeKey));
         int cx = client.player.blockPosition().getX() >> 4;
