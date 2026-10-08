@@ -24,9 +24,9 @@ Planned pipeline:
 
 ## Current milestone
 
-**Milestone 3 — asynchronous voxel LOD pipeline + cross-loader renderer:** Fabric now has a real extraction/drawing path that samples loaded world terrain, builds distance-scaled coarse cells, and submits a distant terrain mesh through a custom render pipeline. The pass is intentionally a stepping stone: its height-field sampler will be replaced by the shared voxel-region cache once the cache is wired to chunk lifecycle events.
+**Milestone 3 — asynchronous voxel LOD pipeline + cross-loader renderer:** both Fabric and NeoForge now ingest client chunks into a shared asynchronous LOD cache, select nested distance bands, and render the resulting terrain through their native 26.3 rendering paths. Explored surface snapshots are also persisted per server/dimension so unloaded terrain can remain available to the distant renderer.
 
-NeoForge now has the 26.3 renderer pass as well. The shared core includes published LOD-region caching, compact voxel meshes, and stable material IDs. CI builds both loader targets with Java 25 / Gradle 9.6.
+The current representation is a compact height-field surface rather than a full volumetric block store. The next rendering pass focuses on GPU mesh caching, frustum culling, smooth LOD transitions and material-aware shading. CI builds both loader targets with Java 25 / Gradle 9.6.
 
 ## Important
 
