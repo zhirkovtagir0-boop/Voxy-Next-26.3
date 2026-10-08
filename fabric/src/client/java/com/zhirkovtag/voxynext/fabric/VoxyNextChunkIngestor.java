@@ -30,14 +30,12 @@ final class VoxyNextChunkIngestor {
                 snapshot.set(x, y, z, material);
             }
         }
-        engine.source().publish(chunkX, chunkZ, snapshot);
-        engine.cache().invalidateAroundChunk(chunkX, chunkZ);
+        engine.publishChunk(chunkX, chunkZ, snapshot);
     }
 
     static void unload(LevelChunk chunk, VoxyNextEngine engine) {
         int x = chunk.getPos().x;
         int z = chunk.getPos().z;
-        engine.source().remove(x, z);
-        engine.cache().invalidateAroundChunk(x, z);
+        engine.unloadChunk(x, z);
     }
 }
