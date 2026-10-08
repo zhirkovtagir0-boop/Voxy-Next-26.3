@@ -32,7 +32,7 @@ public final class ChunkColumnSnapshot {
      */
     public void set(int x, int y, int z, int paletteId) {
         checkXZ(x, z);
-        if (y < minY || y > maxY) throw new IndexOutOfBoundsException("y=" + y);
+        if (y < minY || y > maxY()) throw new IndexOutOfBoundsException("y=" + y);
         int i = x | (z << 4);
         if (paletteId != MaterialPalette.AIR && y >= topY[i]) {
             topY[i] = y;
