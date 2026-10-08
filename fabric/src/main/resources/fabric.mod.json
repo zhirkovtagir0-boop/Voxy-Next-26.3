@@ -14,7 +14,8 @@
       "com.zhirkovtag.voxynext.fabric.VoxyNextFabric"
     ],
     "client": [
-      "com.zhirkovtag.voxynext.fabric.VoxyNextFabricClient"
+      "com.zhirkovtag.voxynext.fabric.VoxyNextFabricClient",
+      "com.zhirkovtag.voxynext.fabric.VoxyNextWorldRenderer"
     ]
   },
   "depends": {
