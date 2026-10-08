@@ -73,6 +73,6 @@ public final class LodRegionBuilder {
         }
 
         if (maxY == Integer.MIN_VALUE || dominant == MaterialPalette.AIR) return null;
-        return new VoxelCell(dominant, minY, maxY, VoxelCell.SOLID);
+        return new VoxelCell(dominant, minY, maxY, VoxelCell.FLAG_SOLID);
     }
 }
