@@ -115,10 +115,6 @@ public final class VoxyNextWorldRenderer implements ClientModInitializer {
                     Math.toIntExact(candidate.regionZ()));
             if (region == null) continue;
 
-            int scale = region.level().scale();
-            long baseX = region.regionX() * (long) region.blockSpan();
-            long baseZ = region.regionZ() * (long) region.blockSpan();
-
             RegionCells cached = cachedCells(region);
             for (Cell cell : cached.cells) {
                 if (cells.size() >= 30000) break;
@@ -155,7 +151,7 @@ public final class VoxyNextWorldRenderer implements ClientModInitializer {
 
         BUFFER.upload();
         StagedVertexBuffer.ExecuteInfo info = BUFFER.getExecuteInfo(draw);
-        if (info == null || info.customIndexBuffer() == null) {
+        if (info == null) {
             BUFFER.endFrame();
             return;
         }
@@ -177,7 +173,7 @@ public final class VoxyNextWorldRenderer implements ClientModInitializer {
             RenderSystem.bindDefaultUniforms(pass);
             pass.setUniform("DynamicTransforms", transforms);
             pass.setVertexBuffer(0, info.vertexBuffer().slice());
-            pass.setIndexBuffer(info.customIndexBuffer(), info.indexType());
+            pass.setIndexBuffer(info.indexBuffer(), info.indexType());
             pass.drawIndexed(info.indexCount(), 1, info.firstIndex(), info.baseVertex(), 0);
         }
         BUFFER.endFrame();
