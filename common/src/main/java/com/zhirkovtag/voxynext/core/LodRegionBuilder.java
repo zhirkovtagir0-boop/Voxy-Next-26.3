@@ -2,7 +2,10 @@ package com.zhirkovtag.voxynext.core;
 
 /**
  * Builds one fixed 32x32 LOD region from world-space chunk snapshots.
- * A region at LOD scale S covers 32*S blocks on each axis.
+ *
+ * For close LODs every source column is sampled. Farther LODs use a bounded
+ * sample grid per cell, keeping generation cost effectively constant as the
+ * LOD scale grows.
  */
 public final class LodRegionBuilder {
     private LodRegionBuilder() {}
@@ -28,24 +31,43 @@ public final class LodRegionBuilder {
         int maxY = Integer.MIN_VALUE;
         int dominant = MaterialPalette.AIR;
         int dominantCount = 0;
-        int[] counts = new int[256];
 
-        for (int z = 0; z < scale; z++) {
-            for (int x = 0; x < scale; x++) {
+        // Never perform more than 4x4 samples per output cell.
+        int step = Math.max(1, (scale + 3) / 4);
+        int sampleCount = 0;
+        int[] ids = new int[16];
+        int[] counts = new int[16];
+
+        for (int z = 0; z < scale; z += step) {
+            for (int x = 0; x < scale; x += step) {
                 int worldX = Math.toIntExact(originX + x);
                 int worldZ = Math.toIntExact(originZ + z);
                 int y = grid.topY(worldX, worldZ);
                 if (y == Integer.MIN_VALUE) continue;
+
                 maxY = Math.max(maxY, y);
                 minY = Math.min(minY, y);
 
                 int material = grid.material(worldX, worldZ);
                 if (material == MaterialPalette.AIR) continue;
-                int slot = material & 255;
-                int count = ++counts[slot];
-                if (count > dominantCount) {
-                    dominantCount = count;
-                    dominant = material;
+
+                int slot = -1;
+                for (int i = 0; i < sampleCount; i++) {
+                    if (ids[i] == material) {
+                        slot = i;
+                        break;
+                    }
+                }
+                if (slot < 0 && sampleCount < ids.length) {
+                    slot = sampleCount++;
+                    ids[slot] = material;
+                }
+                if (slot >= 0) {
+                    int count = ++counts[slot];
+                    if (count > dominantCount) {
+                        dominantCount = count;
+                        dominant = material;
+                    }
                 }
             }
         }
