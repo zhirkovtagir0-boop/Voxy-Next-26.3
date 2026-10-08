@@ -19,7 +19,7 @@ public final class VoxyNextFabricClient implements ClientModInitializer {
         net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents.END_CLIENT_TICK.register(client -> {
             if (client.level == null || client.player == null || (++refreshTicks % 10) != 0) return;
             String serverKey = client.getCurrentServer() == null ? "singleplayer" : client.getCurrentServer().ip;
-            String dimensionKey = client.level.dimension().location().toString();
+            String dimensionKey = client.level.dimension().identifier().toString();
             String safeKey = (serverKey + "_" + dimensionKey).replaceAll("[^a-zA-Z0-9._-]", "_");
             VoxyNextFabric.ENGINE.attachStore(client.gameDirectory.toPath().resolve("voxy_next").resolve(safeKey));
             int cx = client.player.blockPosition().getX() >> 4;
