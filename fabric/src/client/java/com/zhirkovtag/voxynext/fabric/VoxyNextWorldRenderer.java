@@ -82,8 +82,8 @@ public final class VoxyNextWorldRenderer implements ClientModInitializer {
             return;
         }
 
-        double camX = context.camera().getPosition().x;
-        double camZ = context.camera().getPosition().z;
+        double camX = context.levelState().cameraRenderState.pos.x;
+        double camZ = context.levelState().cameraRenderState.pos.z;
         int renderDistanceChunks = Math.max(
                 client.options.getEffectiveRenderDistance(),
                 VoxyNextFabric.ENGINE.budget().renderDistanceChunks());
