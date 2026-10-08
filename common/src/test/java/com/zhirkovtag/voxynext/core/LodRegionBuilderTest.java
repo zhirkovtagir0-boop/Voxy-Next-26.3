@@ -20,5 +20,10 @@ public final class LodRegionBuilderTest {
         if (region.get(0, 0) == null || region.get(0, 0).maxY() != 70) {
             throw new AssertionError("unexpected generated height");
         }
+
+        LodRegion adjacent = LodRegionBuilder.build(grid, LodLevel.LOD0, 0, -1);
+        if (adjacent.populatedCells() != 0) {
+            throw new AssertionError("adjacent region leaked source columns");
+        }
     }
 }
