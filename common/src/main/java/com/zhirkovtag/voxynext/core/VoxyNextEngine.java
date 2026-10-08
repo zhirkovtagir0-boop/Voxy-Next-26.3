@@ -59,6 +59,11 @@ public final class VoxyNextEngine implements AutoCloseable {
         }
     }
 
+    public void unloadChunk(int chunkX, int chunkZ) {
+        if (store == null) source.remove(chunkX, chunkZ);
+        cache.invalidateAroundChunk(chunkX, chunkZ);
+    }
+
     public void requestRegion(LodLevel level, long regionX, long regionZ) {
         LodBuildScheduler current = scheduler;
         if (running.get() && current != null) current.request(level, regionX, regionZ);
