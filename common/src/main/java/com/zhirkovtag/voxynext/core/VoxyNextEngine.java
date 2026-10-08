@@ -19,7 +19,7 @@ public final class VoxyNextEngine implements AutoCloseable {
 
     public synchronized void start() {
         if (!running.compareAndSet(false, true)) return;
-        scheduler = new LodBuildScheduler(source, cache, budget.workerCount());
+        scheduler = new LodBuildScheduler(source, cache, budget.workerCount(), budget.maxRegionsInMemory());
     }
 
     public boolean isRunning() { return running.get(); }
