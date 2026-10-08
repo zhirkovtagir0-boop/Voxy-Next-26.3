@@ -19,7 +19,7 @@ public final class LodRegion {
     public LodLevel level() { return level; }
     public long regionX() { return regionX; }
     public long regionZ() { return regionZ; }
-    public int blockSpan() { return LodLevel.BLOCKS_PER_CHUNK * level.scale(); }
+    public int blockSpan() { return level.blockSpan(); }
     public VoxelCell get(int x, int z) { return cells[(z * SIZE) + x]; }
     public void set(int x, int z, VoxelCell cell) { cells[(z * SIZE) + x] = cell; dirty = true; }
     public boolean dirty() { return dirty; }
