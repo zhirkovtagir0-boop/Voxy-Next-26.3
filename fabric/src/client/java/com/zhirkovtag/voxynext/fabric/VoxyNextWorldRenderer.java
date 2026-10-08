@@ -117,14 +117,25 @@ public final class VoxyNextWorldRenderer implements ClientModInitializer {
             long baseZ = region.regionZ() * (long) region.blockSpan();
 
             for (int z = 0; z < LodRegion.SIZE && cells.size() < 30000; z++) {
-                for (int x = 0; x < LodRegion.SIZE && cells.size() < 30000; x++) {
-                    VoxelCell cell = region.get(x, z);
-                    if (cell == null || cell.packedMaterial() == 0) continue;
-
+                int x = 0;
+                while (x < LodRegion.SIZE && cells.size() < 30000) {
+                    VoxelCell first = region.get(x, z);
+                    if (first == null || first.packedMaterial() == 0) {
+                        x++;
+                        continue;
+                    }
+                    int end = x + 1;
+                    while (end < LodRegion.SIZE) {
+                        VoxelCell next = region.get(end, z);
+                        if (next == null || next.packedMaterial() != first.packedMaterial() || next.maxY() != first.maxY()) break;
+                        end++;
+                    }
                     int x0 = Math.toIntExact(baseX + (long)x * scale);
                     int z0 = Math.toIntExact(baseZ + (long)z * scale);
-                    cells.add(new Cell(x0, z0, x0 + scale, z0 + scale,
-                            cell.maxY(), VoxyNextFabric.ENGINE.palette().color(cell.packedMaterial())));
+                    int x1 = Math.toIntExact(baseX + (long)end * scale);
+                    cells.add(new Cell(x0, z0, x1, z0 + scale,
+                            first.maxY(), VoxyNextFabric.ENGINE.palette().color(first.packedMaterial())));
+                    x = end;
                 }
             }
             if (cells.size() >= 30000) break;
