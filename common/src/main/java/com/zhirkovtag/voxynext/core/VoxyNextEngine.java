@@ -15,7 +15,7 @@ public final class VoxyNextEngine implements AutoCloseable {
     private final LodRegionCache cache = new LodRegionCache();
     private final MaterialPalette palette = new MaterialPalette();
     private volatile DistanceBudget budget =
-            new DistanceBudget(64, Math.max(1, Runtime.getRuntime().availableProcessors() - 2), 32_768);
+            new DistanceBudget(256, Math.max(1, Runtime.getRuntime().availableProcessors() - 2), 32_768);
     private volatile LodBuildScheduler scheduler;
     private volatile ChunkSnapshotStore store;
     private volatile Path storeDirectory;
