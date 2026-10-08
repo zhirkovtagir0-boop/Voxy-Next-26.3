@@ -14,9 +14,7 @@ public final class LodRegionCache {
     private final AtomicLong accessClock = new AtomicLong();
 
     public LodRegion get(LodLevel level, long regionX, long regionZ) {
-        if (regionX < Integer.MIN_VALUE || regionX > Integer.MAX_VALUE ||
-                regionZ < Integer.MIN_VALUE || regionZ > Integer.MAX_VALUE) return null;
-        long key = key(level, (int)regionX, (int)regionZ);
+        long key = key(level, regionX, regionZ);
         LodRegion region = regions.get(key);
         if (region != null) lastAccess.put(key, accessClock.incrementAndGet());
         return region;
@@ -30,9 +28,7 @@ public final class LodRegionCache {
     }
 
     public void invalidate(LodLevel level, long regionX, long regionZ) {
-        if (regionX < Integer.MIN_VALUE || regionX > Integer.MAX_VALUE ||
-                regionZ < Integer.MIN_VALUE || regionZ > Integer.MAX_VALUE) return;
-        long key = key(level, (int)regionX, (int)regionZ);
+        long key = key(level, regionX, regionZ);
         if (regions.remove(key) != null) {
             lastAccess.remove(key);
             generation.incrementAndGet();
@@ -96,7 +92,7 @@ public final class LodRegionCache {
         }
     }
 
-    private static long key(LodLevel level, int x, int z) {
+    private static long key(LodLevel level, long x, long z) {
         long levelBits = ((long)level.ordinal()) << 58;
         return levelBits ^ (((long)x & 0x1FFFFFFFL) << 29) ^ ((long)z & 0x1FFFFFFFL);
     }
