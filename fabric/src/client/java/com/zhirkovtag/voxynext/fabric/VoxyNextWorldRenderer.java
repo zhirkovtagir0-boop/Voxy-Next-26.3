@@ -17,7 +17,6 @@ import com.mojang.renderpearl.api.vertex.VertexFormat;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.rendering.v1.level.LevelExtractionContext;
 import net.fabricmc.fabric.api.client.rendering.v1.level.LevelTerrainRenderContext;
-import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderContext;
 import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderEvents;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.RenderPipelines;
@@ -123,7 +122,7 @@ public final class VoxyNextWorldRenderer implements ClientModInitializer {
         lastBuildGeneration = cacheGeneration;
     }
 
-    private static void upload(LevelRenderContext context) {
+    private static void upload(LevelTerrainRenderContext context) {
         TerrainState snapshot = state;
         uploadedDraw = null;
         if (snapshot.cells.length == 0) return;
