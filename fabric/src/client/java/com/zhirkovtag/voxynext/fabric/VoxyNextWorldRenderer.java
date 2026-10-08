@@ -17,6 +17,7 @@ import com.mojang.renderpearl.api.vertex.VertexFormat;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.rendering.v1.level.LevelExtractionContext;
 import net.fabricmc.fabric.api.client.rendering.v1.level.LevelTerrainRenderContext;
+import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderContext;
 import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderEvents;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.RenderPipelines;
@@ -50,6 +51,7 @@ public final class VoxyNextWorldRenderer implements ClientModInitializer {
     private static final int MAX_REGION_CELL_CACHE = 8192;
 
     private static volatile TerrainState state = TerrainState.EMPTY;
+    private static volatile StagedVertexBuffer.Draw uploadedDraw;
     private static double lastBuildCameraX = Double.NaN;
     private static double lastBuildCameraZ = Double.NaN;
     private static int lastBuildDistance = -1;
@@ -58,6 +60,8 @@ public final class VoxyNextWorldRenderer implements ClientModInitializer {
     @Override
     public void onInitializeClient() {
         net.fabricmc.fabric.api.client.rendering.v1.level.LevelExtractionEvents.END_EXTRACTION.register(VoxyNextWorldRenderer::extract);
+        // GPU uploads must happen before Minecraft opens the terrain render pass.
+        LevelRenderEvents.START_MAIN.register(VoxyNextWorldRenderer::upload);
         LevelRenderEvents.AFTER_OPAQUE_TERRAIN.register(VoxyNextWorldRenderer::draw);
     }
 
@@ -88,7 +92,7 @@ public final class VoxyNextWorldRenderer implements ClientModInitializer {
                 && renderDistanceChunks == lastBuildDistance
                 && cacheGeneration == lastBuildGeneration;
         if (reuse) {
-            state = new TerrainState(camX, camZ, state.cells);
+            state = new TerrainState(camX, camZ, state.cameraY, state.cells);
             return;
         }
 
@@ -111,15 +115,17 @@ public final class VoxyNextWorldRenderer implements ClientModInitializer {
             if (cells.size() >= 30000) break;
         }
 
-        state = new TerrainState(camX, camZ, cells.toArray(Cell[]::new));
+        double camY = context.levelState().cameraRenderState.pos.y;
+        state = new TerrainState(camX, camZ, camY, cells.toArray(Cell[]::new));
         lastBuildCameraX = camX;
         lastBuildCameraZ = camZ;
         lastBuildDistance = renderDistanceChunks;
         lastBuildGeneration = cacheGeneration;
     }
 
-    private static void draw(LevelTerrainRenderContext context) {
+    private static void upload(LevelRenderContext context) {
         TerrainState snapshot = state;
+        uploadedDraw = null;
         if (snapshot.cells.length == 0) return;
 
         VertexFormat format = TERRAIN_PIPELINE.getVertexFormatBinding(0);
@@ -128,14 +134,22 @@ public final class VoxyNextWorldRenderer implements ClientModInitializer {
         PrimitiveTopology topology = TERRAIN_PIPELINE.getPrimitiveTopology();
         StagedVertexBuffer.Draw draw = BUFFER.appendDraw(format, topology);
 
-        double cameraY = context.levelState().cameraRenderState.pos.y;
+        double cameraY = snapshot.cameraY;
         Matrix4f cameraMatrix = new Matrix4f()
                 .translation((float) -snapshot.cameraX, (float) -cameraY, (float) -snapshot.cameraZ);
 
         VertexConsumer out = BUFFER.getVertexBuilder(draw);
         for (Cell cell : snapshot.cells) addCell(out, cameraMatrix, cell);
-        BUFFER.upload();
 
+        // START_MAIN is outside the active terrain render pass, so command-buffer
+        // copies performed by StagedVertexBuffer.upload() are legal here.
+        BUFFER.upload();
+        uploadedDraw = draw;
+    }
+
+    private static void draw(LevelTerrainRenderContext context) {
+        StagedVertexBuffer.Draw draw = uploadedDraw;
+        if (draw == null) return;
         StagedVertexBuffer.ExecuteInfo info = BUFFER.getExecuteInfo(draw);
         if (info == null) {
             BUFFER.endFrame();
@@ -163,6 +177,7 @@ public final class VoxyNextWorldRenderer implements ClientModInitializer {
             pass.drawIndexed(info.indexCount(), 1, info.firstIndex(), info.baseVertex(), 0);
         }
         BUFFER.endFrame();
+        uploadedDraw = null;
     }
 
     private static RegionCells cachedCells(LodRegion region) {
@@ -236,7 +251,7 @@ public final class VoxyNextWorldRenderer implements ClientModInitializer {
 
     private record Cell(int x0,int z0,int x1,int z1,int y,int rgb) {}
     private record RegionCells(LodRegion region, Cell[] cells) {}
-    private record TerrainState(double cameraX,double cameraZ,Cell[] cells) {
-        private static final TerrainState EMPTY=new TerrainState(0,0,new Cell[0]);
+    private record TerrainState(double cameraX,double cameraZ,double cameraY,Cell[] cells) {
+        private static final TerrainState EMPTY=new TerrainState(0,0,0,new Cell[0]);
     }
 }
