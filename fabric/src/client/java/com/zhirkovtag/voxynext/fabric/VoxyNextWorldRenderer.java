@@ -130,7 +130,7 @@ public final class VoxyNextWorldRenderer implements ClientModInitializer {
 
         double cameraY = context.levelState().cameraRenderState.pos.y;
         Matrix4f cameraMatrix = new Matrix4f()
-                .translation((float) -snapshot.cameraX, -cameraY, (float) -snapshot.cameraZ);
+                .translation((float) -snapshot.cameraX, (float) -cameraY, (float) -snapshot.cameraZ);
 
         VertexConsumer out = BUFFER.getVertexBuilder(draw);
         for (Cell cell : snapshot.cells) addCell(out, cameraMatrix, cell);
