@@ -1,4 +1,4 @@
-package com.zhirkovtag.voxynext.fabric;
+package com.zhirkovtagir0.voxynext.fabric;
 
 import com.zhirkovtag.voxynext.core.ChunkColumnSnapshot;
 import com.zhirkovtag.voxynext.core.VoxyNextEngine;
@@ -15,8 +15,8 @@ final class VoxyNextChunkIngestor {
         int height = chunk.getHeight();
         ChunkColumnSnapshot snapshot = new ChunkColumnSnapshot(minY, height);
 
-        int chunkX = chunk.getPos().x;
-        int chunkZ = chunk.getPos().z;
+        int chunkX = chunk.getPos().x();
+        int chunkZ = chunk.getPos().z();
         int baseX = chunkX << 4;
         int baseZ = chunkZ << 4;
 
@@ -34,8 +34,8 @@ final class VoxyNextChunkIngestor {
     }
 
     static void unload(LevelChunk chunk, VoxyNextEngine engine) {
-        int x = chunk.getPos().x;
-        int z = chunk.getPos().z;
+        int x = chunk.getPos().x();
+        int z = chunk.getPos().z();
         engine.unloadChunk(x, z);
     }
 }
