@@ -68,6 +68,7 @@ public final class VoxyNextWorldRenderer implements ClientModInitializer {
         Minecraft client = Minecraft.getInstance();
         if (client.level == null || client.player == null) {
             state = TerrainState.EMPTY;
+            VoxyNextFabric.ENGINE.clearWorld();
             return;
         }
 
