@@ -7,9 +7,9 @@ import java.util.List;
 /**
  * Selects a bounded, non-overlapping set of world-space LOD regions.
  *
- * The selector works in block space and snaps each candidate to its native
- * region grid. Near bands use fine regions; far bands progressively reduce
- * region count. A small overlap margin provides LOD hysteresis.
+ * Each LOD owns a radial band. A coarse region is rejected when any part of its
+ * footprint reaches into the finer band's radius, preventing adjacent LODs from
+ * drawing the same ground at a boundary.
  */
 public final class LodRegionSelector {
     public List<VisibleRegion> select(double cameraX, double cameraZ, int renderDistanceChunks, int maxRegions) {
@@ -17,9 +17,6 @@ public final class LodRegionSelector {
         int budget = Math.max(1, maxRegions);
         List<VisibleRegion> result = new ArrayList<>(Math.min(budget, 4096));
 
-        // A region is accepted only if its center is inside the band and its
-        // footprint intersects the band. This avoids holes without duplicating
-        // whole regions from adjacent LODs.
         for (LodLevel level : LodLevel.values()) {
             double inner = level == LodLevel.LOD0 ? 0.0 : bandRadius(LodLevel.values()[level.ordinal() - 1]);
             double outer = Math.min(radiusBlocks, bandRadius(level));
@@ -27,26 +24,28 @@ public final class LodRegionSelector {
             if (outer <= inner) continue;
 
             int span = level.blockSpan();
-            long minRx = Math.floorDiv((long)Math.floor(cameraX - outer), span);
-            long maxRx = Math.floorDiv((long)Math.floor(cameraX + outer), span);
-            long minRz = Math.floorDiv((long)Math.floor(cameraZ - outer), span);
-            long maxRz = Math.floorDiv((long)Math.floor(cameraZ + outer), span);
+            long minRx = Math.floorDiv((long) Math.floor(cameraX - outer), span);
+            long maxRx = Math.floorDiv((long) Math.floor(cameraX + outer), span);
+            long minRz = Math.floorDiv((long) Math.floor(cameraZ - outer), span);
+            long maxRz = Math.floorDiv((long) Math.floor(cameraZ + outer), span);
 
             for (long rz = minRz; rz <= maxRz; rz++) {
                 for (long rx = minRx; rx <= maxRx; rx++) {
                     double centerX = rx * (double) span + span * 0.5;
                     double centerZ = rz * (double) span + span * 0.5;
-                    double d2 = distanceSquared(centerX, centerZ, cameraX, cameraZ);
-                    double d = Math.sqrt(d2);
+                    double d = Math.sqrt(distanceSquared(centerX, centerZ, cameraX, cameraZ));
                     double halfDiagonal = Math.sqrt(2.0) * span * 0.5;
-                    if (d + halfDiagonal <= inner || d - halfDiagonal > outer) continue;
-                    result.add(new VisibleRegion(rx, rz, level, d2));
+
+                    // Entire footprint must be outside the finer band's inner radius.
+                    if (d - halfDiagonal < inner) continue;
+                    // Footprint must still touch the requested outer radius.
+                    if (d - halfDiagonal > outer) continue;
+
+                    result.add(new VisibleRegion(rx, rz, level, distanceSquared(centerX, centerZ, cameraX, cameraZ)));
                 }
             }
         }
 
-        // Prefer the finest representation when a boundary candidate is
-        // unavoidable, then nearest-first for cache locality.
         result.sort(Comparator
                 .comparingInt((VisibleRegion v) -> v.level().ordinal())
                 .thenComparingDouble(VisibleRegion::distanceSquared));
