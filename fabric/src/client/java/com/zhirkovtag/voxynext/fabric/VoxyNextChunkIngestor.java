@@ -1,4 +1,4 @@
-package com.zhirkovtagir0.voxynext.fabric;
+package com.zhirkovtag.voxynext.fabric;
 
 import com.zhirkovtag.voxynext.core.ChunkColumnSnapshot;
 import com.zhirkovtag.voxynext.core.VoxyNextEngine;
@@ -6,7 +6,6 @@ import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.level.chunk.LevelChunk;
 import net.minecraft.world.level.levelgen.Heightmap;
 
-/** Converts loaded Fabric client chunks into compact surface snapshots. */
 final class VoxyNextChunkIngestor {
     private VoxyNextChunkIngestor() {}
 
@@ -14,12 +13,10 @@ final class VoxyNextChunkIngestor {
         int minY = chunk.getMinY();
         int height = chunk.getHeight();
         ChunkColumnSnapshot snapshot = new ChunkColumnSnapshot(minY, height);
-
         int chunkX = chunk.getPos().x();
         int chunkZ = chunk.getPos().z();
         int baseX = chunkX << 4;
         int baseZ = chunkZ << 4;
-
         for (int z = 0; z < 16; z++) {
             for (int x = 0; x < 16; x++) {
                 int y = chunk.getHeight(Heightmap.Types.WORLD_SURFACE, x, z) - 1;
