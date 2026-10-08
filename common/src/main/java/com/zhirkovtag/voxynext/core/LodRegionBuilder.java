@@ -16,9 +16,11 @@ public final class LodRegionBuilder {
         long originX = regionX * (long) region.blockSpan();
         long originZ = regionZ * (long) region.blockSpan();
 
+        int[] ids = new int[16];
+        int[] counts = new int[16];
         for (int z = 0; z < LodRegion.SIZE; z++) {
             for (int x = 0; x < LodRegion.SIZE; x++) {
-                VoxelCell cell = aggregate(grid, originX + (long) x * scale, originZ + (long) z * scale, scale);
+                VoxelCell cell = aggregate(grid, originX + (long) x * scale, originZ + (long) z * scale, scale, ids, counts);
                 if (cell != null) region.set(x, z, cell);
             }
         }
@@ -26,7 +28,7 @@ public final class LodRegionBuilder {
         return region;
     }
 
-    private static VoxelCell aggregate(ChunkSnapshotGrid grid, long originX, long originZ, int scale) {
+    private static VoxelCell aggregate(ChunkSnapshotGrid grid, long originX, long originZ, int scale, int[] ids, int[] counts) {
         int minY = Integer.MAX_VALUE;
         int maxY = Integer.MIN_VALUE;
         int dominant = MaterialPalette.AIR;
@@ -35,8 +37,10 @@ public final class LodRegionBuilder {
         // Never perform more than 4x4 samples per output cell.
         int step = Math.max(1, (scale + 3) / 4);
         int sampleCount = 0;
-        int[] ids = new int[16];
-        int[] counts = new int[16];
+        for (int i = 0; i < ids.length; i++) {
+            ids[i] = MaterialPalette.AIR;
+            counts[i] = 0;
+        }
 
         for (int z = 0; z < scale; z += step) {
             for (int x = 0; x < scale; x += step) {
