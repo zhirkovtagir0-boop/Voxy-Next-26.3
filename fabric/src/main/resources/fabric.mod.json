@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "id": "voxy_next",
+  "version": "${version}",
+  "name": "Voxy Next",
+  "description": "High-distance voxel LOD terrain renderer for Minecraft 26.3.",
+  "authors": [
+    "Voxy Next contributors"
+  ],
+  "license": "MIT",
+  "environment": "*",
+  "entrypoints": {
+    "main": [
+      "com.zhirkovtag.voxynext.fabric.VoxyNextFabric"
+    ],
+    "client": [
+      "com.zhirkovtag.voxynext.fabric.VoxyNextFabricClient",
+      "com.zhirkovtag.voxynext.fabric.VoxyNextWorldRenderer"
+    ]
+  },
+  "depends": {
+    "fabricloader": ">=0.19.5",
+    "minecraft": "~26.3",
+    "fabric-api": ">=0.162.0+26.3",
+    "java": ">=25"
+  }
+}

@@ -1,0 +1,10 @@
+plugins { id 'net.fabricmc.fabric-loom' version loom_version; id 'maven-publish' }
+loom { splitEnvironmentSourceSets(); mods { "voxy_next" { sourceSet sourceSets.main; sourceSet sourceSets.client } } }
+dependencies { minecraft "com.mojang:minecraft:${minecraft_version}"; modImplementation "net.fabricmc:fabric-loader:${loader_version}"; modImplementation "net.fabricmc.fabric-api:fabric-api:${fabric_api_version}" }
+sourceSets.main.java.srcDirs += ['../common/src/main/java']
+sourceSets.main.resources.srcDirs += ['../common/src/main/resources']
+processResources { inputs.property 'version', project.version; filesMatching('fabric.mod.json') { expand version: project.version } }
+tasks.withType(JavaCompile).configureEach { options.release = 25 }
+java { withSourcesJar(); sourceCompatibility = JavaVersion.VERSION_25; targetCompatibility = JavaVersion.VERSION_25 }
+jar { from('../LICENSE') { rename { 'LICENSE_VoxyNext' } } }
+base { archivesName = mod_id }
