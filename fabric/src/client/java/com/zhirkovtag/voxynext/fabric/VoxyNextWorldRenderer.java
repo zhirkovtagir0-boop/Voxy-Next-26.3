@@ -8,18 +8,15 @@ import java.util.List;
 
 import com.mojang.blaze3d.pipeline.RenderTarget;
 import com.mojang.blaze3d.systems.RenderSystem;
-import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.mojang.renderpearl.api.buffers.GpuBufferSlice;
 import com.mojang.renderpearl.api.commands.RenderPass;
 import com.mojang.renderpearl.api.pipeline.PrimitiveTopology;
 import com.mojang.renderpearl.api.pipeline.RenderPipeline;
-import com.mojang.renderpearl.api.textures.GpuTextureView;
 import com.mojang.renderpearl.api.vertex.VertexFormat;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.rendering.v1.level.LevelExtractionContext;
-import net.fabricmc.fabric.api.client.rendering.v1.level.LevelExtractionEvents;
-import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderContext;
+import net.fabricmc.fabric.api.client.rendering.v1.level.LevelTerrainRenderContext;
 import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderEvents;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.RenderPipelines;
@@ -36,20 +33,13 @@ import com.zhirkovtag.voxynext.core.LodRegionSelector;
 import com.zhirkovtag.voxynext.core.VisibleRegion;
 import com.zhirkovtag.voxynext.core.VoxelCell;
 
-/**
- * Fabric 26.3 distant terrain renderer.
- *
- * Extraction selects already-built LOD regions and requests missing regions from
- * the shared asynchronous builder. The drawing phase only consumes immutable
- * published data and uploads one bounded staging buffer.
- */
+/** Fabric 26.3 distant terrain renderer. */
 public final class VoxyNextWorldRenderer implements ClientModInitializer {
     private static final RenderPipeline TERRAIN_PIPELINE = RenderPipelines.register(
             RenderPipeline.builder(RenderPipelines.DEBUG_FILLED_SNIPPET)
                     .withLocation(Identifier.fromNamespaceAndPath("voxy_next", "pipeline/distant_terrain"))
                     .build()
     );
-
     private static final Vector4f COLOR_MODULATOR = new Vector4f(1f, 1f, 1f, 1f);
     private static final Vector3f MODEL_OFFSET = new Vector3f();
     private static final Matrix4f TEXTURE_MATRIX = new Matrix4f();
@@ -67,7 +57,7 @@ public final class VoxyNextWorldRenderer implements ClientModInitializer {
 
     @Override
     public void onInitializeClient() {
-        LevelExtractionEvents.END_EXTRACTION.register(VoxyNextWorldRenderer::extract);
+        net.fabricmc.fabric.api.client.rendering.v1.level.LevelExtractionEvents.END_EXTRACTION.register(VoxyNextWorldRenderer::extract);
         LevelRenderEvents.AFTER_OPAQUE_TERRAIN.register(VoxyNextWorldRenderer::draw);
     }
 
@@ -110,9 +100,7 @@ public final class VoxyNextWorldRenderer implements ClientModInitializer {
         for (VisibleRegion candidate : visible) {
             VoxyNextFabric.ENGINE.requestRegion(candidate.level(), candidate.regionX(), candidate.regionZ());
             LodRegion region = VoxyNextFabric.ENGINE.cache().get(
-                    candidate.level(),
-                    Math.toIntExact(candidate.regionX()),
-                    Math.toIntExact(candidate.regionZ()));
+                    candidate.level(), Math.toIntExact(candidate.regionX()), Math.toIntExact(candidate.regionZ()));
             if (region == null) continue;
 
             RegionCells cached = cachedCells(region);
@@ -123,15 +111,14 @@ public final class VoxyNextWorldRenderer implements ClientModInitializer {
             if (cells.size() >= 30000) break;
         }
 
-        Cell[] builtCells = cells.toArray(Cell[]::new);
-        state = new TerrainState(camX, camZ, builtCells);
+        state = new TerrainState(camX, camZ, cells.toArray(Cell[]::new));
         lastBuildCameraX = camX;
         lastBuildCameraZ = camZ;
         lastBuildDistance = renderDistanceChunks;
         lastBuildGeneration = cacheGeneration;
     }
 
-    private static void draw(LevelRenderContext context) {
+    private static void draw(LevelTerrainRenderContext context) {
         TerrainState snapshot = state;
         if (snapshot.cells.length == 0) return;
 
@@ -141,15 +128,14 @@ public final class VoxyNextWorldRenderer implements ClientModInitializer {
         PrimitiveTopology topology = TERRAIN_PIPELINE.getPrimitiveTopology();
         StagedVertexBuffer.Draw draw = BUFFER.appendDraw(format, topology);
 
-        PoseStack pose = context.poseStack();
-        pose.pushPose();
-        pose.translate(-snapshot.cameraX, -context.levelState().cameraRenderState.pos.y, -snapshot.cameraZ);
+        float cameraY = context.levelState().cameraRenderState.pos.y;
+        Matrix4f cameraMatrix = new Matrix4f()
+                .translation((float) -snapshot.cameraX, -cameraY, (float) -snapshot.cameraZ);
 
         VertexConsumer out = BUFFER.getVertexBuilder(draw);
-        for (Cell cell : snapshot.cells) addCell(out, pose.last().pose(), cell);
-        pose.popPose();
-
+        for (Cell cell : snapshot.cells) addCell(out, cameraMatrix, cell);
         BUFFER.upload();
+
         StagedVertexBuffer.ExecuteInfo info = BUFFER.getExecuteInfo(draw);
         if (info == null) {
             BUFFER.endFrame();
@@ -160,7 +146,7 @@ public final class VoxyNextWorldRenderer implements ClientModInitializer {
                 .writeTransform(RenderSystem.getModelViewMatrixCopy(), COLOR_MODULATOR, MODEL_OFFSET, TEXTURE_MATRIX);
 
         RenderTarget target = Minecraft.getInstance().gameRenderer.mainRenderTarget();
-        GpuTextureView color = target.getColorTextureView();
+        var color = target.getColorTextureView();
         if (color == null) {
             BUFFER.endFrame();
             return;
@@ -199,9 +185,9 @@ public final class VoxyNextWorldRenderer implements ClientModInitializer {
                     if (next == null || next.packedMaterial() != first.packedMaterial() || next.maxY() != first.maxY()) break;
                     endX++;
                 }
-                int x0 = Math.toIntExact(baseX + (long)x * scale);
-                int z0 = Math.toIntExact(baseZ + (long)z * scale);
-                int x1 = Math.toIntExact(baseX + (long)endX * scale);
+                int x0 = Math.toIntExact(baseX + (long) x * scale);
+                int z0 = Math.toIntExact(baseZ + (long) z * scale);
+                int x1 = Math.toIntExact(baseX + (long) endX * scale);
                 cells.add(new Cell(x0, z0, x1, z0 + scale, first.maxY(),
                         VoxyNextFabric.ENGINE.palette().color(first.packedMaterial())));
                 x = endX;
@@ -212,15 +198,13 @@ public final class VoxyNextWorldRenderer implements ClientModInitializer {
         if (REGION_CELL_CACHE.size() > MAX_REGION_CELL_CACHE) {
             int target = MAX_REGION_CELL_CACHE * 3 / 4;
             var iterator = REGION_CELL_CACHE.keySet().iterator();
-            while (REGION_CELL_CACHE.size() > target && iterator.hasNext()) {
-                REGION_CELL_CACHE.remove(iterator.next());
-            }
+            while (REGION_CELL_CACHE.size() > target && iterator.hasNext()) REGION_CELL_CACHE.remove(iterator.next());
         }
         return result;
     }
 
     private static long regionKey(LodRegion region) {
-        return ((long)region.level().ordinal() << 58)
+        return ((long) region.level().ordinal() << 58)
                 ^ ((region.regionX() & 0x1FFFFFFFL) << 29)
                 ^ (region.regionZ() & 0x1FFFFFFFL);
     }
