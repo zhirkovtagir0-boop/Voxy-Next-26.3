@@ -10,6 +10,8 @@ public final class LodRegionCacheTest {
         cache.publish(region);
         assert cache.get(LodLevel.LOD2, 4, -2) == region;
         assert cache.size() == 1;
+        cache.trimTo(128);
+        assert cache.size() == 1;
 
         cache.invalidate(LodLevel.LOD2, 4, -2);
         assert cache.get(LodLevel.LOD2, 4, -2) == null;
