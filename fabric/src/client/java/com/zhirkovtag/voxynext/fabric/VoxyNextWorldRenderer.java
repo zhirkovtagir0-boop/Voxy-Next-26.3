@@ -2,16 +2,18 @@ package com.zhirkovtag.voxynext.fabric;
 
 import java.util.Optional;
 import java.util.OptionalDouble;
+import java.util.ArrayList;
+import java.util.List;
 
-import com.mojang.renderpearl.api.pipeline.PrimitiveTopology;
-import com.mojang.renderpearl.api.buffers.GpuBufferSlice;
-import com.mojang.renderpearl.api.pipeline.RenderPipeline;
 import com.mojang.blaze3d.pipeline.RenderTarget;
-import com.mojang.renderpearl.api.commands.RenderPass;
 import com.mojang.blaze3d.systems.RenderSystem;
-import com.mojang.renderpearl.api.textures.GpuTextureView;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
+import com.mojang.renderpearl.api.buffers.GpuBufferSlice;
+import com.mojang.renderpearl.api.commands.RenderPass;
+import com.mojang.renderpearl.api.pipeline.PrimitiveTopology;
+import com.mojang.renderpearl.api.pipeline.RenderPipeline;
+import com.mojang.renderpearl.api.textures.GpuTextureView;
 import com.mojang.renderpearl.api.vertex.VertexFormat;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.rendering.v1.level.LevelExtractionContext;
@@ -22,23 +24,23 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.client.renderer.StagedVertexBuffer;
 import net.minecraft.client.renderer.rendertype.RenderType;
-import net.minecraft.core.BlockPos;
 import net.minecraft.resources.Identifier;
-import net.minecraft.world.level.Level;
-import net.minecraft.world.level.levelgen.Heightmap;
-import net.minecraft.world.level.block.state.BlockState;
 import org.joml.Matrix4f;
 import org.joml.Matrix4fc;
 import org.joml.Vector3f;
 import org.joml.Vector4f;
 
+import com.zhirkovtag.voxynext.core.LodRegion;
+import com.zhirkovtag.voxynext.core.LodRegionSelector;
+import com.zhirkovtag.voxynext.core.VisibleRegion;
+import com.zhirkovtag.voxynext.core.VoxelCell;
+
 /**
- * First visible Voxy-Next terrain pass.
+ * Fabric 26.3 distant terrain renderer.
  *
- * It deliberately uses the modern extraction/drawing split: world sampling happens
- * during extraction, while GPU submission happens during drawing. The mesh is a
- * coarse height-field now; the storage/voxel pipeline will replace this sampler
- * without changing the render pass.
+ * Extraction selects already-built LOD regions and requests missing regions from
+ * the shared asynchronous builder. The drawing phase only consumes immutable
+ * published data and uploads one bounded staging buffer.
  */
 public final class VoxyNextWorldRenderer implements ClientModInitializer {
     private static final RenderPipeline TERRAIN_PIPELINE = RenderPipelines.register(
@@ -52,6 +54,7 @@ public final class VoxyNextWorldRenderer implements ClientModInitializer {
     private static final Matrix4f TEXTURE_MATRIX = new Matrix4f();
     private static final StagedVertexBuffer BUFFER =
             new StagedVertexBuffer(() -> "Voxy Next Distant Terrain", RenderType.SMALL_BUFFER_SIZE);
+    private static final LodRegionSelector SELECTOR = new LodRegionSelector();
 
     private static volatile TerrainState state = TerrainState.EMPTY;
 
@@ -63,55 +66,46 @@ public final class VoxyNextWorldRenderer implements ClientModInitializer {
 
     private static void extract(LevelExtractionContext context) {
         Minecraft client = Minecraft.getInstance();
-        Level level = client.level;
-        if (level == null || client.player == null) {
+        if (client.level == null || client.player == null) {
             state = TerrainState.EMPTY;
             return;
         }
 
         double camX = context.levelState().cameraRenderState.pos.x;
         double camZ = context.levelState().cameraRenderState.pos.z;
+        int renderDistanceChunks = Math.max(
+                client.options.getEffectiveRenderDistance() * 16,
+                VoxyNextFabric.ENGINE.budget().renderDistanceChunks());
 
-        // The first pass intentionally starts beyond vanilla's close terrain.
-        final int nearChunks = Math.max(12, client.options.getEffectiveRenderDistance());
-        final int maxChunks = Math.min(256, Math.max(64, nearChunks * 4));
-        final int nearBlocks = nearChunks * 16;
-        final int maxBlocks = maxChunks * 16;
+        List<VisibleRegion> visible = SELECTOR.select(
+                camX, camZ, renderDistanceChunks,
+                Math.min(VoxyNextFabric.ENGINE.budget().maxRegionsInMemory(), 4096));
 
-        int minX = floorTo(camX - maxBlocks);
-        int maxX = floorTo(camX + maxBlocks);
-        int minZ = floorTo(camZ - maxBlocks);
-        int maxZ = floorTo(camZ + maxBlocks);
+        ArrayList<Cell> cells = new ArrayList<>(30000);
+        for (VisibleRegion candidate : visible) {
+            VoxyNextFabric.ENGINE.requestRegion(candidate.level(), candidate.regionX(), candidate.regionZ());
+            LodRegion region = VoxyNextFabric.ENGINE.cache().get(
+                    candidate.level(),
+                    Math.toIntExact(candidate.regionX()),
+                    Math.toIntExact(candidate.regionZ()));
+            if (region == null) continue;
 
-        // Keep extraction bounded. Cell size grows with distance.
-        java.util.ArrayList<Cell> cells = new java.util.ArrayList<>(8192);
-        for (int z = minZ; z < maxZ; ) {
-            int scaleZ = lodScale(z + 1, camZ, nearBlocks);
-            int nextZ = Math.min(maxZ, z + scaleZ);
-            for (int x = minX; x < maxX; ) {
-                int scale = Math.max(scaleZ, lodScale(x + 1, camX, nearBlocks));
-                scale = Math.min(scale, 32);
-                int nextX = Math.min(maxX, x + scale);
+            int scale = region.level().scale();
+            long baseX = region.regionX() * (long) region.blockSpan();
+            long baseZ = region.regionZ() * (long) region.blockSpan();
 
-                double cx = x + (nextX - x) * 0.5;
-                double cz = z + (nextZ - z) * 0.5;
-                double d2 = distanceSquared(cx, cz, camX, camZ);
-                if (d2 >= (nearBlocks * 0.9) * (nearBlocks * 0.9)
-                        && d2 <= (maxBlocks + 32.0) * (maxBlocks + 32.0)
-                        && cells.size() < 12000) {
-                    int sx = (x + nextX) >> 1;
-                    int sz = (z + nextZ) >> 1;
-                    int y = level.getHeight(Heightmap.Types.WORLD_SURFACE, sx, sz);
-                    if (y > level.getMinY()) {
-                        BlockPos pos = new BlockPos(sx, Math.max(level.getMinY(), y - 1), sz);
-                        BlockState block = level.getBlockState(pos);
-                        int rgb = terrainColor(block, level, pos, y);
-                        cells.add(new Cell(x, z, nextX, nextZ, y, rgb));
-                    }
+            for (int z = 0; z < LodRegion.SIZE && cells.size() < 30000; z++) {
+                for (int x = 0; x < LodRegion.SIZE && cells.size() < 30000; x++) {
+                    VoxelCell cell = region.get(x, z);
+                    if (cell == null || cell.packedMaterial() == 0) continue;
+
+                    int x0 = Math.toIntExact(baseX + (long)x * scale);
+                    int z0 = Math.toIntExact(baseZ + (long)z * scale);
+                    cells.add(new Cell(x0, z0, x0 + scale, z0 + scale,
+                            cell.maxY(), VoxyNextFabric.ENGINE.palette().color(cell.packedMaterial())));
                 }
-                x = nextX;
             }
-            z = nextZ;
+            if (cells.size() >= 30000) break;
         }
 
         state = new TerrainState(camX, camZ, cells.toArray(Cell[]::new));
@@ -119,36 +113,48 @@ public final class VoxyNextWorldRenderer implements ClientModInitializer {
 
     private static void draw(LevelRenderContext context) {
         TerrainState snapshot = state;
-        if (snapshot.cells.length == 0) {
-            return;
-        }
+        if (snapshot.cells.length == 0) return;
 
-        RenderPipeline pipeline = TERRAIN_PIPELINE;
-        VertexFormat format = pipeline.getVertexFormatBinding(0);
-        if (format == null) {
-            return;
-        }
+        VertexFormat format = TERRAIN_PIPELINE.getVertexFormatBinding(0);
+        if (format == null) return;
 
-        PrimitiveTopology topology = pipeline.getPrimitiveTopology();
-        StagedVertexBuffer.Draw draw =
-                BUFFER.appendDraw(format, topology, topology == PrimitiveTopology.QUADS
-                        ? RenderSystem.getProjectionType().vertexSorting() : null);
+        PrimitiveTopology topology = TERRAIN_PIPELINE.getPrimitiveTopology();
+        StagedVertexBuffer.Draw draw = BUFFER.appendDraw(format, topology);
 
         PoseStack pose = context.poseStack();
         pose.pushPose();
         pose.translate(-snapshot.cameraX, -context.levelState().cameraRenderState.pos.y, -snapshot.cameraZ);
 
         VertexConsumer out = BUFFER.getVertexBuilder(draw);
-        for (Cell cell : snapshot.cells) {
-            addCell(out, pose.last().pose(), cell);
-        }
-
+        for (Cell cell : snapshot.cells) addCell(out, pose.last().pose(), cell);
         pose.popPose();
 
         BUFFER.upload();
         StagedVertexBuffer.ExecuteInfo info = BUFFER.getExecuteInfo(draw);
-        if (info != null) {
-            submit(Minecraft.getInstance(), info, pipeline);
+        if (info == null || info.customIndexBuffer() == null) {
+            BUFFER.endFrame();
+            return;
+        }
+
+        GpuBufferSlice transforms = RenderSystem.getDynamicUniforms()
+                .writeTransform(RenderSystem.getModelViewMatrixCopy(), COLOR_MODULATOR, MODEL_OFFSET, TEXTURE_MATRIX);
+
+        RenderTarget target = Minecraft.getInstance().gameRenderer.mainRenderTarget();
+        GpuTextureView color = target.getColorTextureView();
+        if (color == null) {
+            BUFFER.endFrame();
+            return;
+        }
+
+        try (RenderPass pass = RenderSystem.getDevice().createCommandEncoder().createRenderPass(
+                () -> "Voxy Next distant terrain", color, Optional.empty(),
+                target.getDepthTextureView(), OptionalDouble.empty())) {
+            pass.setPipeline(RenderSystem.getCompiledPipeline(TERRAIN_PIPELINE));
+            RenderSystem.bindDefaultUniforms(pass);
+            pass.setUniform("DynamicTransforms", transforms);
+            pass.setVertexBuffer(0, info.vertexBuffer().slice());
+            pass.setIndexBuffer(info.customIndexBuffer(), info.indexType());
+            pass.drawIndexed(info.indexCount(), 1, info.firstIndex(), info.baseVertex(), 0);
         }
         BUFFER.endFrame();
     }
@@ -157,88 +163,29 @@ public final class VoxyNextWorldRenderer implements ClientModInitializer {
         float r = ((c.rgb >>> 16) & 255) / 255f;
         float g = ((c.rgb >>> 8) & 255) / 255f;
         float b = (c.rgb & 255) / 255f;
+        float y = c.y;
+        float skirt = Math.max(2f, Math.min(24f, (c.x1 - c.x0) * .75f));
+        float sy = Math.max(y - skirt, y - 24f);
 
-        float x0 = c.x0, x1 = c.x1, z0 = c.z0, z1 = c.z1, y = c.y;
-
-        // Top.
-        quad(out, matrix, x0, y, z1, x1, y, z1, x1, y, z0, x0, y, z0, r, g, b, 1f);
-
-        // A shallow skirt hides cracks between different LOD rings and gives cliffs volume.
-        float skirt = Math.max(2f, Math.min(24f, (x1 - x0) * 0.75f));
-        quad(out, matrix, x0, y, z0, x0, Math.max(y - skirt, y - 24f), z0,
-                x0, Math.max(y - skirt, y - 24f), z1, x0, y, z1, r * .78f, g * .78f, b * .78f, 1f);
-        quad(out, matrix, x1, y, z1, x1, Math.max(y - skirt, y - 24f), z1,
-                x1, Math.max(y - skirt, y - 24f), z0, x1, y, z0, r * .70f, g * .70f, b * .70f, 1f);
-        quad(out, matrix, x0, y, z0, x0, Math.max(y - skirt, y - 24f), z0,
-                x1, Math.max(y - skirt, y - 24f), z0, x1, y, z0, r * .84f, g * .84f, b * .84f, 1f);
-        quad(out, matrix, x1, y, z1, x1, Math.max(y - skirt, y - 24f), z1,
-                x0, Math.max(y - skirt, y - 24f), z1, x0, y, z1, r * .76f, g * .76f, b * .76f, 1f);
+        quad(out,matrix,c.x0,y,c.z1,c.x1,y,c.z1,c.x1,y,c.z0,c.x0,y,c.z0,r,g,b,1);
+        quad(out,matrix,c.x0,y,c.z0,c.x0,sy,c.z0,c.x0,sy,c.z1,c.x0,y,c.z1,r*.78f,g*.78f,b*.78f,1);
+        quad(out,matrix,c.x1,y,c.z1,c.x1,sy,c.z1,c.x1,sy,c.z0,c.x1,y,c.z0,r*.70f,g*.70f,b*.70f,1);
+        quad(out,matrix,c.x0,y,c.z0,c.x0,sy,c.z0,c.x1,sy,c.z0,c.x1,y,c.z0,r*.84f,g*.84f,b*.84f,1);
+        quad(out,matrix,c.x1,y,c.z1,c.x1,sy,c.z1,c.x0,sy,c.z1,c.x0,y,c.z1,r*.76f,g*.76f,b*.76f,1);
     }
 
     private static void quad(VertexConsumer v, Matrix4fc m,
-                             float ax, float ay, float az, float bx, float by, float bz,
-                             float cx, float cy, float cz, float dx, float dy, float dz,
-                             float r, float g, float b, float a) {
-        v.addVertex(m, ax, ay, az).setColor(r, g, b, a);
-        v.addVertex(m, bx, by, bz).setColor(r, g, b, a);
-        v.addVertex(m, cx, cy, cz).setColor(r, g, b, a);
-        v.addVertex(m, dx, dy, dz).setColor(r, g, b, a);
+                             float ax,float ay,float az,float bx,float by,float bz,
+                             float cx,float cy,float cz,float dx,float dy,float dz,
+                             float r,float g,float b,float a) {
+        v.addVertex(m,ax,ay,az).setColor(r,g,b,a);
+        v.addVertex(m,bx,by,bz).setColor(r,g,b,a);
+        v.addVertex(m,cx,cy,cz).setColor(r,g,b,a);
+        v.addVertex(m,dx,dy,dz).setColor(r,g,b,a);
     }
 
-    private static void submit(Minecraft client, StagedVertexBuffer.ExecuteInfo info, RenderPipeline pipeline) {
-        GpuBufferSlice transforms = RenderSystem.getDynamicUniforms()
-                .writeTransform(RenderSystem.getModelViewMatrixCopy(), COLOR_MODULATOR, MODEL_OFFSET, TEXTURE_MATRIX);
-
-        RenderTarget target = client.gameRenderer.mainRenderTarget();
-        GpuTextureView color = target.getColorTextureView();
-        if (color == null) {
-            return;
-        }
-
-        try (RenderPass pass = RenderSystem.getDevice().createCommandEncoder().createRenderPass(
-                () -> "Voxy Next distant terrain", color, Optional.empty(),
-                target.getDepthTextureView(), OptionalDouble.empty())) {
-            pass.setPipeline(RenderSystem.getCompiledPipeline(pipeline));
-            RenderSystem.bindDefaultUniforms(pass);
-            pass.setUniform("DynamicTransforms", transforms);
-            pass.setVertexBuffer(0, info.vertexBuffer().slice());
-            pass.setIndexBuffer(info.customIndexBuffer(), info.indexType());
-            pass.drawIndexed(info.indexCount(), 1, info.firstIndex(), info.baseVertex(), 0);
-        }
-    }
-
-    private static int lodScale(double coordinate, double camera, int nearBlocks) {
-        double d = Math.abs(coordinate - camera);
-        if (d < nearBlocks) return 8;
-        if (d < nearBlocks * 2.0) return 16;
-        return 32;
-    }
-
-    private static int floorTo(double value) {
-        return (int) Math.floor(value / 8.0) * 8;
-    }
-
-    private static double distanceSquared(double x, double z, double cx, double cz) {
-        double dx = x - cx;
-        double dz = z - cz;
-        return dx * dx + dz * dz;
-    }
-
-    private static int terrainColor(BlockState state, Level level, BlockPos pos, int y) {
-        String name = state.getBlock().toString().toLowerCase(java.util.Locale.ROOT);
-        if (name.contains("water")) return 0x3F78A8;
-        if (name.contains("sand")) return 0xC9B56A;
-        if (name.contains("snow") || name.contains("ice")) return 0xDDE8EA;
-        if (name.contains("grass") || name.contains("leaves")) return 0x5F8F45;
-        if (name.contains("stone") || name.contains("deepslate")) return y < 50 ? 0x666A6B : 0x777B7B;
-        if (name.contains("dirt") || name.contains("mud")) return 0x806044;
-        return y < 64 ? 0x77705D : 0x748A55;
-    }
-
-    private record Cell(int x0, int z0, int x1, int z1, int y, int rgb) {
-    }
-
-    private record TerrainState(double cameraX, double cameraZ, Cell[] cells) {
-        private static final TerrainState EMPTY = new TerrainState(0, 0, new Cell[0]);
+    private record Cell(int x0,int z0,int x1,int z1,int y,int rgb) {}
+    private record TerrainState(double cameraX,double cameraZ,Cell[] cells) {
+        private static final TerrainState EMPTY=new TerrainState(0,0,new Cell[0]);
     }
 }
