@@ -18,10 +18,16 @@ public final class LodBuildScheduler implements AutoCloseable {
     private final LodRegionCache cache;
     private final ExecutorService executor;
     private final Set<Key> pending = ConcurrentHashMap.newKeySet();
+    private final int maxRegions;
 
     public LodBuildScheduler(ChunkSnapshotGrid source, LodRegionCache cache, int workers) {
+        this(source, cache, workers, 32_768);
+    }
+
+    public LodBuildScheduler(ChunkSnapshotGrid source, LodRegionCache cache, int workers, int maxRegions) {
         this.source = source;
         this.cache = cache;
+        this.maxRegions = Math.max(128, maxRegions);
         int count = Math.max(1, Math.min(16, workers));
         this.executor = Executors.newFixedThreadPool(count, task -> {
             Thread thread = new Thread(task, "VoxyNext-LOD");
@@ -48,6 +54,7 @@ public final class LodBuildScheduler implements AutoCloseable {
                     pending.remove(key);
                     if (error == null && region != null) {
                         cache.publish(region);
+                        cache.trimTo(maxRegions);
                     }
                 });
     }
