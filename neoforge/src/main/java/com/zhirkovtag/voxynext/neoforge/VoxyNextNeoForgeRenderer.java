@@ -17,6 +17,7 @@ import org.joml.Matrix4f;
 import org.joml.Matrix4fc;
 
 import java.util.ArrayList;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * NeoForge 26.3 distant terrain renderer using the native SubmitNode geometry path.
@@ -26,6 +27,8 @@ import java.util.ArrayList;
 public final class VoxyNextNeoForgeRenderer {
     private static final com.zhirkovtag.voxynext.core.LodRegionSelector SELECTOR =
             new com.zhirkovtag.voxynext.core.LodRegionSelector();
+    private static final ConcurrentHashMap<Long, RegionCells> REGION_CELL_CACHE = new ConcurrentHashMap<>();
+    private static final int MAX_REGION_CELL_CACHE = 8192;
     private static volatile TerrainState state = TerrainState.EMPTY;
     private static double lastBuildCameraX = Double.NaN;
     private static double lastBuildCameraZ = Double.NaN;
@@ -78,24 +81,10 @@ public final class VoxyNextNeoForgeRenderer {
             long baseX = region.regionX() * (long) region.blockSpan();
             long baseZ = region.regionZ() * (long) region.blockSpan();
 
-            for (int z = 0; z < com.zhirkovtag.voxynext.core.LodRegion.SIZE && cells.size() < 30000; z++) {
-                int x = 0;
-                while (x < com.zhirkovtag.voxynext.core.LodRegion.SIZE && cells.size() < 30000) {
-                    com.zhirkovtag.voxynext.core.VoxelCell first = region.get(x, z);
-                    if (first == null || first.packedMaterial() == 0) { x++; continue; }
-                    int endX = x + 1;
-                    while (endX < com.zhirkovtag.voxynext.core.LodRegion.SIZE) {
-                        com.zhirkovtag.voxynext.core.VoxelCell next = region.get(endX, z);
-                        if (next == null || next.packedMaterial() != first.packedMaterial() || next.maxY() != first.maxY()) break;
-                        endX++;
-                    }
-                    int x0 = Math.toIntExact(baseX + (long)x * scale);
-                    int z0 = Math.toIntExact(baseZ + (long)z * scale);
-                    int x1 = Math.toIntExact(baseX + (long)endX * scale);
-                    cells.add(new Cell(x0, z0, x1, z0 + scale, first.maxY(),
-                            VoxyNextNeoForge.ENGINE.palette().color(first.packedMaterial())));
-                    x = endX;
-                }
+            RegionCells cached = cachedCells(region);
+            for (Cell cell : cached.cells) {
+                if (cells.size() >= 30000) break;
+                cells.add(cell);
             }
             if (cells.size() >= 30000) break;
         }
@@ -126,6 +115,46 @@ public final class VoxyNextNeoForgeRenderer {
         );
 
         pose.popPose();
+    }
+
+    private static RegionCells cachedCells(com.zhirkovtag.voxynext.core.LodRegion region) {
+        long key = regionKey(region);
+        RegionCells cached = REGION_CELL_CACHE.get(key);
+        if (cached != null && cached.region == region) return cached;
+
+        int scale = region.level().scale();
+        long baseX = region.regionX() * (long) region.blockSpan();
+        long baseZ = region.regionZ() * (long) region.blockSpan();
+        ArrayList<Cell> cells = new ArrayList<>(com.zhirkovtag.voxynext.core.LodRegion.SIZE * com.zhirkovtag.voxynext.core.LodRegion.SIZE);
+        for (int z = 0; z < com.zhirkovtag.voxynext.core.LodRegion.SIZE; z++) {
+            int x = 0;
+            while (x < com.zhirkovtag.voxynext.core.LodRegion.SIZE) {
+                com.zhirkovtag.voxynext.core.VoxelCell first = region.get(x, z);
+                if (first == null || first.packedMaterial() == 0) { x++; continue; }
+                int endX = x + 1;
+                while (endX < com.zhirkovtag.voxynext.core.LodRegion.SIZE) {
+                    com.zhirkovtag.voxynext.core.VoxelCell next = region.get(endX, z);
+                    if (next == null || next.packedMaterial() != first.packedMaterial() || next.maxY() != first.maxY()) break;
+                    endX++;
+                }
+                int x0 = Math.toIntExact(baseX + (long)x * scale);
+                int z0 = Math.toIntExact(baseZ + (long)z * scale);
+                int x1 = Math.toIntExact(baseX + (long)endX * scale);
+                cells.add(new Cell(x0, z0, x1, z0 + scale, first.maxY(),
+                        VoxyNextNeoForge.ENGINE.palette().color(first.packedMaterial())));
+                x = endX;
+            }
+        }
+        RegionCells result = new RegionCells(region, cells.toArray(Cell[]::new));
+        REGION_CELL_CACHE.put(key, result);
+        if (REGION_CELL_CACHE.size() > MAX_REGION_CELL_CACHE) REGION_CELL_CACHE.clear();
+        return result;
+    }
+
+    private static long regionKey(com.zhirkovtag.voxynext.core.LodRegion region) {
+        return ((long)region.level().ordinal() << 58)
+                ^ ((region.regionX() & 0x1FFFFFFFL) << 29)
+                ^ (region.regionZ() & 0x1FFFFFFFL);
     }
 
     private static void addCell(VertexConsumer out, Matrix4fc m, Cell c) {
@@ -179,6 +208,7 @@ public final class VoxyNextNeoForgeRenderer {
     }
 
     private record Cell(int x0,int z0,int x1,int z1,int y,int rgb) {}
+    private record RegionCells(com.zhirkovtag.voxynext.core.LodRegion region, Cell[] cells) {}
     private record TerrainState(double cameraX,double cameraZ,Cell[] cells) {
         private static final TerrainState EMPTY=new TerrainState(0,0,new Cell[0]);
     }
