@@ -29,6 +29,7 @@ public final class VoxyNextFabricClient implements ClientModInitializer {
         });
 
         ClientLifecycleEvents.CLIENT_STOPPING.register(client -> {
+            VoxyNextWorldRenderer.close();
             VoxyNextFabric.ENGINE.clearWorld();
             VoxyNextFabric.ENGINE.close();
         });
