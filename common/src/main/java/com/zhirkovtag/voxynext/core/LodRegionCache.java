@@ -32,17 +32,21 @@ public final class LodRegionCache {
     public void invalidateAroundChunk(int chunkX, int chunkZ) {
         int blockX = chunkX << 4;
         int blockZ = chunkZ << 4;
+        boolean changed = false;
         for (LodLevel level : LodLevel.values()) {
             int span = level.blockSpan();
             int rx = Math.floorDiv(blockX, span);
             int rz = Math.floorDiv(blockZ, span);
+            // Invalidate the containing region plus a one-cell border. The
+            // border is required because neighboring coarse cells sample this
+            // chunk at their footprint edge.
             for (int z = rz - 1; z <= rz + 1; z++) {
                 for (int x = rx - 1; x <= rx + 1; x++) {
-                    regions.remove(key(level, x, z));
+                    changed |= regions.remove(key(level, x, z)) != null;
                 }
             }
         }
-        generation.incrementAndGet();
+        if (changed) generation.incrementAndGet();
     }
 
     public void clear() {
