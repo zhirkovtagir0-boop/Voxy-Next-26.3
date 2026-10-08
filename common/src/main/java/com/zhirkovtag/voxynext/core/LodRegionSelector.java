@@ -12,8 +12,6 @@ import java.util.List;
  * region count. A small overlap margin provides LOD hysteresis.
  */
 public final class LodRegionSelector {
-    private static final double HYSTERESIS = 24.0;
-
     public List<VisibleRegion> select(double cameraX, double cameraZ, int renderDistanceChunks, int maxRegions) {
         double radiusBlocks = Math.max(128.0, Math.max(1, renderDistanceChunks) * 16.0);
         int budget = Math.max(1, maxRegions);
@@ -23,7 +21,7 @@ public final class LodRegionSelector {
         // footprint intersects the band. This avoids holes without duplicating
         // whole regions from adjacent LODs.
         for (LodLevel level : LodLevel.values()) {
-            double inner = level == LodLevel.LOD0 ? 0.0 : bandRadius(level) * 0.5 - HYSTERESIS;
+            double inner = level == LodLevel.LOD0 ? 0.0 : bandRadius(LodLevel.values()[level.ordinal() - 1]);
             double outer = Math.min(radiusBlocks, bandRadius(level));
             if (level == LodLevel.LOD7) outer = radiusBlocks;
             if (outer <= inner) continue;
