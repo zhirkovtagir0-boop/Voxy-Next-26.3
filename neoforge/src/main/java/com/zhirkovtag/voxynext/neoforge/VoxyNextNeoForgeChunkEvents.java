@@ -4,6 +4,7 @@ import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.event.level.ChunkEvent;
+import net.neoforged.neoforge.event.level.LevelEvent;
 
 /** Client-only chunk lifecycle bridge for the shared voxel store. */
 @EventBusSubscriber(modid = "voxy_next", value = Dist.CLIENT)
@@ -18,5 +19,12 @@ public final class VoxyNextNeoForgeChunkEvents {
     @SubscribeEvent
     public static void onUnload(ChunkEvent.Unload event) {
         VoxyNextChunkIngestor.unload(event.getChunk(), VoxyNextNeoForge.ENGINE);
+    }
+
+    @SubscribeEvent
+    public static void onLevelUnload(LevelEvent.Unload event) {
+        if (event.getLevel().isClientSide()) {
+            VoxyNextNeoForge.ENGINE.clearWorld();
+        }
     }
 }
