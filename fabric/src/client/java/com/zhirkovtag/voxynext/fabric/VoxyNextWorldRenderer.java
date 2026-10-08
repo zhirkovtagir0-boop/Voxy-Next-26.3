@@ -128,7 +128,7 @@ public final class VoxyNextWorldRenderer implements ClientModInitializer {
         PrimitiveTopology topology = TERRAIN_PIPELINE.getPrimitiveTopology();
         StagedVertexBuffer.Draw draw = BUFFER.appendDraw(format, topology);
 
-        float cameraY = context.levelState().cameraRenderState.pos.y;
+        double cameraY = context.levelState().cameraRenderState.pos.y;
         Matrix4f cameraMatrix = new Matrix4f()
                 .translation((float) -snapshot.cameraX, -cameraY, (float) -snapshot.cameraZ);
 
