@@ -20,6 +20,12 @@ jobs:
       - name: Build Fabric
         working-directory: fabric
         run: gradle build --no-daemon
+      - name: Upload Fabric JAR
+        uses: actions/upload-artifact@v4
+        with:
+          name: voxy-next-fabric-26.3
+          path: fabric/build/libs/*.jar
+          if-no-files-found: error
 
   neoforge:
     runs-on: ubuntu-latest
@@ -35,3 +41,9 @@ jobs:
       - name: Build NeoForge
         working-directory: neoforge
         run: gradle build --no-daemon
+      - name: Upload NeoForge JAR
+        uses: actions/upload-artifact@v4
+        with:
+          name: voxy-next-neoforge-26.3
+          path: neoforge/build/libs/*.jar
+          if-no-files-found: error
