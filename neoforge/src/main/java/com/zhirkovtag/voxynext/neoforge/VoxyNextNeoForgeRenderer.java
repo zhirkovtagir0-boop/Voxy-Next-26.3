@@ -27,6 +27,10 @@ public final class VoxyNextNeoForgeRenderer {
     private static final com.zhirkovtag.voxynext.core.LodRegionSelector SELECTOR =
             new com.zhirkovtag.voxynext.core.LodRegionSelector();
     private static volatile TerrainState state = TerrainState.EMPTY;
+    private static double lastBuildCameraX = Double.NaN;
+    private static double lastBuildCameraZ = Double.NaN;
+    private static int lastBuildDistance = -1;
+    private static long lastBuildGeneration = Long.MIN_VALUE;
 
     private VoxyNextNeoForgeRenderer() {}
 
@@ -36,6 +40,7 @@ public final class VoxyNextNeoForgeRenderer {
         Minecraft client = Minecraft.getInstance();
         if (level == null || client.player == null) {
             state = TerrainState.EMPTY;
+            lastBuildCameraX = Double.NaN;
             if (level == null) VoxyNextNeoForge.ENGINE.clearWorld();
             return;
         }
@@ -45,6 +50,17 @@ public final class VoxyNextNeoForgeRenderer {
         int renderDistanceChunks = Math.max(
                 client.options.getEffectiveRenderDistance(),
                 VoxyNextNeoForge.ENGINE.budget().renderDistanceChunks());
+
+        long cacheGeneration = VoxyNextNeoForge.ENGINE.cache().generation();
+        boolean reuse = !Double.isNaN(lastBuildCameraX)
+                && Math.abs(camX - lastBuildCameraX) < 8.0
+                && Math.abs(camZ - lastBuildCameraZ) < 8.0
+                && renderDistanceChunks == lastBuildDistance
+                && cacheGeneration == lastBuildGeneration;
+        if (reuse) {
+            state = new TerrainState(camX, camZ, state.cells);
+            return;
+        }
 
         java.util.List<com.zhirkovtag.voxynext.core.VisibleRegion> visible =
                 SELECTOR.select(camX, camZ, renderDistanceChunks,
@@ -74,7 +90,12 @@ public final class VoxyNextNeoForgeRenderer {
             }
             if (cells.size() >= 30000) break;
         }
-        state = new TerrainState(camX, camZ, cells.toArray(Cell[]::new));
+        Cell[] builtCells = cells.toArray(Cell[]::new);
+        state = new TerrainState(camX, camZ, builtCells);
+        lastBuildCameraX = camX;
+        lastBuildCameraZ = camZ;
+        lastBuildDistance = renderDistanceChunks;
+        lastBuildGeneration = cacheGeneration;
     }
 
     @SubscribeEvent
