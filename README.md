@@ -24,9 +24,9 @@ Planned pipeline:
 
 ## Current milestone
 
-**Milestone 1 — first visible terrain pass:** Fabric now has a real extraction/drawing path that samples loaded world terrain, builds distance-scaled coarse cells, and submits a distant terrain mesh through a custom render pipeline. The pass is intentionally a stepping stone: its height-field sampler will be replaced by the shared voxel-region cache once the cache is wired to chunk lifecycle events.
+**Milestone 2 — shared storage + cross-loader renderer:** Fabric now has a real extraction/drawing path that samples loaded world terrain, builds distance-scaled coarse cells, and submits a distant terrain mesh through a custom render pipeline. The pass is intentionally a stepping stone: its height-field sampler will be replaced by the shared voxel-region cache once the cache is wired to chunk lifecycle events.
 
-NeoForge has the 26.3 bootstrap and is the next renderer port target.
+NeoForge now has the 26.3 renderer pass as well. The shared core includes published LOD-region caching, compact voxel meshes, and stable material IDs. CI builds both loader targets with Java 25 / Gradle 9.6.
 
 ## Important
 
