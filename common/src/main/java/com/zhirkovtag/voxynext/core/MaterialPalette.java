@@ -34,4 +34,18 @@ public final class MaterialPalette {
     public int size() {
         return next.get();
     }
+
+    /** Stable approximate albedo used by the distant terrain renderer. */
+    public int color(int id) {
+        String name = name(id).toLowerCase(java.util.Locale.ROOT);
+        if (name.contains("water")) return 0x3F78A8;
+        if (name.contains("sand")) return 0xC9B56A;
+        if (name.contains("snow") || name.contains("ice")) return 0xDDE8EA;
+        if (name.contains("grass") || name.contains("leaves") || name.contains("moss")) return 0x5F8F45;
+        if (name.contains("stone") || name.contains("deepslate")) return 0x777B7B;
+        if (name.contains("dirt") || name.contains("mud")) return 0x806044;
+        if (name.contains("wood") || name.contains("log") || name.contains("planks")) return 0x8B6847;
+        if (name.contains("lava")) return 0xD96A1A;
+        return 0x77705D;
+    }
 }
