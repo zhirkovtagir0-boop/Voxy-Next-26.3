@@ -28,6 +28,10 @@ public final class VoxyNextNeoForgeChunkEvents {
     public static void onClientTick(ClientTickEvent.Post event) {
         Minecraft client = Minecraft.getInstance();
         if (client.level == null || client.player == null || (++refreshTicks % 10) != 0) return;
+        String serverKey = client.getCurrentServer() == null ? "singleplayer" : client.getCurrentServer().ip;
+        String dimensionKey = client.level.dimension().location().toString();
+        String safeKey = (serverKey + "_" + dimensionKey).replaceAll("[^a-zA-Z0-9._-]", "_");
+        VoxyNextNeoForge.ENGINE.attachStore(client.gameDirectory.toPath().resolve("voxy_next").resolve(safeKey));
         int cx = client.player.blockPosition().getX() >> 4;
         int cz = client.player.blockPosition().getZ() >> 4;
         var chunk = client.level.getChunkSource().getChunkNow(cx, cz);
