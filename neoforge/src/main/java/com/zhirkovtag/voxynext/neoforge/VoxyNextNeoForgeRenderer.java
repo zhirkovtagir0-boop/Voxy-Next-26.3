@@ -143,7 +143,14 @@ public final class VoxyNextNeoForgeRenderer {
         }
         RegionCells result = new RegionCells(region, cells.toArray(Cell[]::new));
         REGION_CELL_CACHE.put(key, result);
-        if (REGION_CELL_CACHE.size() > MAX_REGION_CELL_CACHE) REGION_CELL_CACHE.clear();
+        if (REGION_CELL_CACHE.size() > MAX_REGION_CELL_CACHE) {
+            int target = MAX_REGION_CELL_CACHE * 3 / 4;
+            var iterator = REGION_CELL_CACHE.entrySet().iterator();
+            while (REGION_CELL_CACHE.size() > target && iterator.hasNext()) {
+                iterator.next();
+                iterator.remove();
+            }
+        }
         return result;
     }
 
