@@ -4,7 +4,7 @@ public final class LodRegionCacheTest {
     public static void main(String[] args) {
         LodRegionCache cache = new LodRegionCache();
         LodRegion region = new LodRegion(LodLevel.LOD2, 4, -2);
-        region.set(0, 0, new VoxelCell(7, 64, 80, VoxelCell.SOLID));
+        region.set(0, 0, new VoxelCell(7, 64, 80, VoxelCell.FLAG_SOLID));
         region.clearDirty();
 
         cache.publish(region);
