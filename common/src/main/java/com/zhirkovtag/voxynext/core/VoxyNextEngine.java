@@ -18,6 +18,7 @@ public final class VoxyNextEngine implements AutoCloseable {
             new DistanceBudget(64, Math.max(1, Runtime.getRuntime().availableProcessors() - 2), 32_768);
     private volatile LodBuildScheduler scheduler;
     private volatile ChunkSnapshotStore store;
+    private volatile Path storeDirectory;
 
     public synchronized void start() {
         if (!running.compareAndSet(false, true)) return;
@@ -31,8 +32,12 @@ public final class VoxyNextEngine implements AutoCloseable {
     public MaterialPalette palette() { return palette; }
 
     public synchronized void attachStore(Path directory) {
+        if (directory != null && directory.equals(storeDirectory) && store != null) return;
         ChunkSnapshotStore old = store;
+        source.clear();
+        cache.clear();
         store = directory == null ? null : new ChunkSnapshotStore(directory);
+        storeDirectory = directory;
         if (store != null) store.loadInto(source);
         if (old != null) old.close();
     }
@@ -72,6 +77,7 @@ public final class VoxyNextEngine implements AutoCloseable {
         if (current != null) current.close();
         ChunkSnapshotStore persistent = store;
         store = null;
+        storeDirectory = null;
         if (persistent != null) persistent.close();
         source.clear();
         cache.clear();
