@@ -44,8 +44,8 @@ public final class VoxyNextNeoForgeRenderer {
             return;
         }
 
-        double camX = event.getCamera().getPosition().x;
-        double camZ = event.getCamera().getPosition().z;
+        double camX = event.getLevelRenderState().cameraRenderState.pos.x;
+        double camZ = event.getLevelRenderState().cameraRenderState.pos.z;
         int renderDistanceChunks = Math.max(
                 client.options.getEffectiveRenderDistance(),
                 VoxyNextNeoForge.ENGINE.budget().renderDistanceChunks());
@@ -99,7 +99,7 @@ public final class VoxyNextNeoForgeRenderer {
 
         event.getSubmitNodeCollector().submitCustomGeometry(
                 pose,
-                RenderTypes.solid(),
+                RenderTypes.solidMovingBlock(),
                 (entry, buffer) -> {
                     Matrix4f matrix = entry.pose();
                     for (Cell cell : snapshot.cells) addCell(buffer, matrix, cell);
