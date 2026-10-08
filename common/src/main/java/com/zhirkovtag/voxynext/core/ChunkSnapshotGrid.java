@@ -28,7 +28,12 @@ public final class ChunkSnapshotGrid {
         return removed;
     }
 
-    public void clear() { chunks.clear(); }
+    public void clear() {
+        if (!chunks.isEmpty()) {
+            chunks.clear();
+            generation.incrementAndGet();
+        }
+    }
     public int size() { return chunks.size(); }
 
     public int topY(int worldX, int worldZ) {
