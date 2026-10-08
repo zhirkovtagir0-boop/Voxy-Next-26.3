@@ -26,7 +26,7 @@ final class VoxyNextChunkIngestor {
                 if (y < minY || y > minY + height - 1) continue;
                 var state = chunk.getBlockState(new net.minecraft.core.BlockPos(baseX + x, y, baseZ + z));
                 if (state.isAir()) continue;
-                int material = BuiltInRegistries.BLOCK.getId(state.getBlock()) + 1;
+                int material = engine.palette().id(BuiltInRegistries.BLOCK.getKey(state.getBlock()).toString());
                 snapshot.set(x, y, z, material);
             }
         }
