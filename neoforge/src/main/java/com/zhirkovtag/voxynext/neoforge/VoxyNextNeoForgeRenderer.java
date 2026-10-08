@@ -43,7 +43,7 @@ public final class VoxyNextNeoForgeRenderer {
         double camX = event.getCamera().getPosition().x;
         double camZ = event.getCamera().getPosition().z;
         int renderDistanceChunks = Math.max(
-                client.options.getEffectiveRenderDistance() * 16,
+                client.options.getEffectiveRenderDistance(),
                 VoxyNextNeoForge.ENGINE.budget().renderDistanceChunks());
 
         java.util.List<com.zhirkovtag.voxynext.core.VisibleRegion> visible =
