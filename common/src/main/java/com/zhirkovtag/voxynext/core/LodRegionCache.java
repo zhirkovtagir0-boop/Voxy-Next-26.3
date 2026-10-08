@@ -52,7 +52,11 @@ public final class LodRegionCache {
             // chunk at their footprint edge.
             for (int z = rz - 1; z <= rz + 1; z++) {
                 for (int x = rx - 1; x <= rx + 1; x++) {
-                    changed |= regions.remove(key(level, x, z)) != null;
+                    long key = key(level, x, z);
+                    if (regions.remove(key) != null) {
+                        lastAccess.remove(key);
+                        changed = true;
+                    }
                 }
             }
         }
@@ -60,8 +64,9 @@ public final class LodRegionCache {
     }
 
     public void clear() {
-        if (!regions.isEmpty()) {
+        if (!regions.isEmpty() || !lastAccess.isEmpty()) {
             regions.clear();
+            lastAccess.clear();
             generation.incrementAndGet();
         }
     }
@@ -72,11 +77,15 @@ public final class LodRegionCache {
     /** Keeps the hottest regions and evicts the coldest entries without blocking readers. */
     public void trimTo(int maximum) {
         int limit = Math.max(128, maximum);
-        while (regions.size() > limit) {
+        int size = regions.size();
+        if (size <= limit + Math.max(64, limit / 20)) return;
+
+        int target = limit;
+        while (regions.size() > target) {
             long coldKey = 0L;
             long coldStamp = Long.MAX_VALUE;
             for (var entry : lastAccess.entrySet()) {
-                if (entry.getValue() < coldStamp) {
+                if (entry.getValue() < coldStamp && regions.containsKey(entry.getKey())) {
                     coldStamp = entry.getValue();
                     coldKey = entry.getKey();
                 }
