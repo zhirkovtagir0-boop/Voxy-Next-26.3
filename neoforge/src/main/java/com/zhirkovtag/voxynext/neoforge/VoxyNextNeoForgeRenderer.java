@@ -1,13 +1,13 @@
 package com.zhirkovtag.voxynext.neoforge;
 
-import com.mojang.blaze3d.platform.DepthTestFunction;
+import com.mojang.blaze3d.pipeline.RenderTarget;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.mojang.renderpearl.api.buffers.GpuBufferSlice;
 import com.mojang.renderpearl.api.commands.RenderPass;
-import com.mojang.renderpearl.api.pipeline.RenderPipeline;
 import com.mojang.renderpearl.api.pipeline.PrimitiveTopology;
+import com.mojang.renderpearl.api.pipeline.RenderPipeline;
 import com.mojang.renderpearl.api.textures.GpuTextureView;
 import com.mojang.renderpearl.api.vertex.VertexFormat;
 import net.minecraft.client.Minecraft;
@@ -31,10 +31,13 @@ import org.joml.Vector4f;
 
 import java.util.ArrayList;
 import java.util.Optional;
+import java.util.OptionalDouble;
 
 /**
- * NeoForge 26.3 implementation of the first distant-terrain pass.
- * Extraction samples the world; the stage reuses NeoForge's active RenderPass.
+ * NeoForge 26.3 distant terrain pass.
+ *
+ * The stage only owns extraction/draw orchestration; the actual GPU pass is
+ * created against the main target, matching the cross-loader rendering path.
  */
 @EventBusSubscriber(modid = "voxy_next", value = Dist.CLIENT)
 public final class VoxyNextNeoForgeRenderer {
@@ -44,9 +47,12 @@ public final class VoxyNextNeoForgeRenderer {
                     .build()
     );
 
-    private static final Vector4f WHITE = new Vector4f(1, 1, 1, 1);
-    private static final Vector3f ZERO = new Vector3f();
-    private static final Matrix4f TEX = new Matrix4f();
+    private static final Vector4f COLOR_MODULATOR = new Vector4f(1f, 1f, 1f, 1f);
+    private static final Vector3f MODEL_OFFSET = new Vector3f();
+    private static final Matrix4f TEXTURE_MATRIX = new Matrix4f();
+    private static final StagedVertexBuffer BUFFER =
+            new StagedVertexBuffer(() -> "Voxy Next Distant Terrain", RenderType.SMALL_BUFFER_SIZE);
+
     private static volatile TerrainState state = TerrainState.EMPTY;
 
     private VoxyNextNeoForgeRenderer() {}
@@ -57,6 +63,7 @@ public final class VoxyNextNeoForgeRenderer {
         Minecraft client = Minecraft.getInstance();
         if (level == null || client.player == null) {
             state = TerrainState.EMPTY;
+            if (level == null) VoxyNextNeoForge.ENGINE.clearWorld();
             return;
         }
 
@@ -85,7 +92,7 @@ public final class VoxyNextNeoForgeRenderer {
                     int sz2 = (z + nz) >> 1;
                     int y = level.getHeight(Heightmap.Types.WORLD_SURFACE, sx, sz2);
                     if (y > level.getMinY()) {
-                        BlockPos pos = new BlockPos(sx, Math.max(level.getMinY(), y - 1), sz2);
+                        BlockPos pos = new BlockPos(sx, y, sz2);
                         cells.add(new Cell(x, z, nx, nz, y, color(level.getBlockState(pos), y)));
                     }
                 }
@@ -99,67 +106,105 @@ public final class VoxyNextNeoForgeRenderer {
     @SubscribeEvent
     public static void draw(RenderLevelStageEvent.AfterOpaqueBlocks event) {
         TerrainState snapshot = state;
-        if (snapshot.cells.length == 0 || event.getRenderPass() == null) return;
+        if (snapshot.cells.length == 0) return;
 
-        StagedVertexBuffer buffer = Minecraft.getInstance().renderBuffers().stagedVertexBuffer();
         VertexFormat format = PIPELINE.getVertexFormatBinding(0);
         if (format == null) return;
+        PrimitiveTopology topology = PIPELINE.getPrimitiveTopology();
+        StagedVertexBuffer.Draw draw = BUFFER.appendDraw(format, topology);
 
-        StagedVertexBuffer.Draw draw = buffer.appendDraw(format, PIPELINE.getPrimitiveTopology());
         PoseStack pose = event.getPoseStack();
+        if (pose == null) return;
         pose.pushPose();
         pose.translate(-snapshot.cameraX, -event.getLevelRenderState().cameraRenderState.pos.y, -snapshot.cameraZ);
 
-        VertexConsumer out = buffer.getVertexBuilder(draw);
+        VertexConsumer out = BUFFER.getVertexBuilder(draw);
         for (Cell c : snapshot.cells) addCell(out, pose.last().pose(), c);
         pose.popPose();
 
-        buffer.upload();
-        StagedVertexBuffer.ExecuteInfo info = buffer.getExecuteInfo(draw);
+        BUFFER.upload();
+        StagedVertexBuffer.ExecuteInfo info = BUFFER.getExecuteInfo(draw);
         if (info == null || info.customIndexBuffer() == null) {
-            buffer.endFrame();
+            BUFFER.endFrame();
             return;
         }
 
-        RenderPass pass = event.getRenderPass();
-        pass.setPipeline(RenderSystem.getCompiledPipeline(PIPELINE));
+        Minecraft client = Minecraft.getInstance();
+        RenderTarget target = client.gameRenderer.mainRenderTarget();
+        GpuTextureView color = target.getColorTextureView();
+        if (color == null) {
+            BUFFER.endFrame();
+            return;
+        }
+
         GpuBufferSlice transforms = RenderSystem.getDynamicUniforms()
-                .writeTransform(RenderSystem.getModelViewMatrixCopy(), WHITE, ZERO, TEX);
-        pass.setUniform("DynamicTransforms", transforms);
-        pass.setVertexBuffer(0, info.vertexBuffer().slice());
-        pass.setIndexBuffer(info.customIndexBuffer(), info.indexType());
-        pass.drawIndexed(info.indexCount(), 1, info.firstIndex(), info.baseVertex(), 0);
-        buffer.endFrame();
+                .writeTransform(RenderSystem.getModelViewMatrixCopy(), COLOR_MODULATOR, MODEL_OFFSET, TEXTURE_MATRIX);
+
+        try (RenderPass pass = RenderSystem.getDevice().createCommandEncoder().createRenderPass(
+                () -> "Voxy Next distant terrain", color, Optional.empty(),
+                target.getDepthTextureView(), OptionalDouble.empty())) {
+            pass.setPipeline(RenderSystem.getCompiledPipeline(PIPELINE));
+            RenderSystem.bindDefaultUniforms(pass);
+            pass.setUniform("DynamicTransforms", transforms);
+            pass.setVertexBuffer(0, info.vertexBuffer().slice());
+            pass.setIndexBuffer(info.customIndexBuffer(), info.indexType());
+            pass.drawIndexed(info.indexCount(), 1, info.firstIndex(), info.baseVertex(), 0);
+        }
+        BUFFER.endFrame();
     }
 
     private static void addCell(VertexConsumer out, Matrix4fc m, Cell c) {
-        float r = ((c.rgb >>> 16) & 255) / 255f, g = ((c.rgb >>> 8) & 255) / 255f, b = (c.rgb & 255) / 255f;
-        float y = c.y, skirt = Math.max(2, Math.min(24, (c.x1 - c.x0) * .75f));
-        quad(out, m, c.x0,y,c.z1,c.x1,y,c.z1,c.x1,y,c.z0,c.x0,y,c.z0,r,g,b,1);
-        float sy = Math.max(y - skirt, y - 24);
+        float r = ((c.rgb >>> 16) & 255) / 255f;
+        float g = ((c.rgb >>> 8) & 255) / 255f;
+        float b = (c.rgb & 255) / 255f;
+        float y = c.y;
+        float skirt = Math.max(2f, Math.min(24f, (c.x1 - c.x0) * .75f));
+        float sy = Math.max(y - skirt, y - 24f);
+
+        quad(out,m,c.x0,y,c.z1,c.x1,y,c.z1,c.x1,y,c.z0,c.x0,y,c.z0,r,g,b,1);
         quad(out,m,c.x0,y,c.z0,c.x0,sy,c.z0,c.x0,sy,c.z1,c.x0,y,c.z1,r*.78f,g*.78f,b*.78f,1);
         quad(out,m,c.x1,y,c.z1,c.x1,sy,c.z1,c.x1,sy,c.z0,c.x1,y,c.z0,r*.70f,g*.70f,b*.70f,1);
         quad(out,m,c.x0,y,c.z0,c.x0,sy,c.z0,c.x1,sy,c.z0,c.x1,y,c.z0,r*.84f,g*.84f,b*.84f,1);
         quad(out,m,c.x1,y,c.z1,c.x1,sy,c.z1,c.x0,sy,c.z1,c.x0,y,c.z1,r*.76f,g*.76f,b*.76f,1);
     }
 
-    private static void quad(VertexConsumer v, Matrix4fc m,float ax,float ay,float az,float bx,float by,float bz,float cx,float cy,float cz,float dx,float dy,float dz,float r,float g,float b,float a){
+    private static void quad(VertexConsumer v, Matrix4fc m,
+                             float ax,float ay,float az,float bx,float by,float bz,
+                             float cx,float cy,float cz,float dx,float dy,float dz,
+                             float r,float g,float b,float a) {
         v.addVertex(m,ax,ay,az).setColor(r,g,b,a);
         v.addVertex(m,bx,by,bz).setColor(r,g,b,a);
         v.addVertex(m,cx,cy,cz).setColor(r,g,b,a);
         v.addVertex(m,dx,dy,dz).setColor(r,g,b,a);
     }
 
-    private static int lodScale(double p,double c,int near){double d=Math.abs(p-c);return d<near?8:d<near*2?16:32;}
-    private static int floorTo(double v){return (int)Math.floor(v/8.0)*8;}
-    private static double dist2(double x,double z,double cx,double cz){double dx=x-cx,dz=z-cz;return dx*dx+dz*dz;}
-    private static int color(BlockState s,int y){
-        String n=s.getBlock().toString().toLowerCase(java.util.Locale.ROOT);
-        if(n.contains("water"))return 0x3F78A8;if(n.contains("sand"))return 0xC9B56A;
-        if(n.contains("snow")||n.contains("ice"))return 0xDDE8EA;if(n.contains("grass")||n.contains("leaves"))return 0x5F8F45;
-        if(n.contains("stone")||n.contains("deepslate"))return y<50?0x666A6B:0x777B7B;
-        if(n.contains("dirt")||n.contains("mud"))return 0x806044;return y<64?0x77705D:0x748A55;
+    private static int lodScale(double p,double c,int near) {
+        double d=Math.abs(p-c);
+        return d<near?8:d<near*2?16:32;
     }
-    private record Cell(int x0,int z0,int x1,int z1,int y,int rgb){}
-    private record TerrainState(double cameraX,double cameraZ,Cell[] cells){private static final TerrainState EMPTY=new TerrainState(0,0,new Cell[0]);}
+
+    private static int floorTo(double v) {
+        return (int)Math.floor(v / 8.0) * 8;
+    }
+
+    private static double dist2(double x,double z,double cx,double cz) {
+        double dx=x-cx,dz=z-cz;
+        return dx*dx+dz*dz;
+    }
+
+    private static int color(BlockState s,int y) {
+        String n=s.getBlock().toString().toLowerCase(java.util.Locale.ROOT);
+        if(n.contains("water"))return 0x3F78A8;
+        if(n.contains("sand"))return 0xC9B56A;
+        if(n.contains("snow")||n.contains("ice"))return 0xDDE8EA;
+        if(n.contains("grass")||n.contains("leaves"))return 0x5F8F45;
+        if(n.contains("stone")||n.contains("deepslate"))return y<50?0x666A6B:0x777B7B;
+        if(n.contains("dirt")||n.contains("mud"))return 0x806044;
+        return y<64?0x77705D:0x748A55;
+    }
+
+    private record Cell(int x0,int z0,int x1,int z1,int y,int rgb) {}
+    private record TerrainState(double cameraX,double cameraZ,Cell[] cells) {
+        private static final TerrainState EMPTY=new TerrainState(0,0,new Cell[0]);
+    }
 }
