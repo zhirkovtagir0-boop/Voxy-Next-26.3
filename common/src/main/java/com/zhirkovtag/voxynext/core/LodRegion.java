@@ -4,7 +4,7 @@ import java.util.Arrays;
 
 /** Fixed-size sparse-friendly LOD region. Coordinates are local to the region. */
 public final class LodRegion {
-    public static final int SIZE = 32;
+    public static final int SIZE = 16;
     private final LodLevel level;
     private final long regionX, regionZ;
     private final VoxelCell[] cells = new VoxelCell[SIZE * SIZE];
