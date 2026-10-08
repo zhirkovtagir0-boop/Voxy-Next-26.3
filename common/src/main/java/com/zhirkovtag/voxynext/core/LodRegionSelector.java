@@ -5,42 +5,43 @@ import java.util.Comparator;
 import java.util.List;
 
 /**
- * Selects world-space LOD regions in concentric bands.
- * Each LOD has a deterministic region grid, preventing overlapping regions from
- * multiple levels while keeping the render list bounded.
+ * Selects non-overlapping world-space LOD regions in concentric bands.
+ * A small hysteresis margin prevents cells from constantly changing LOD while
+ * the camera moves around a boundary.
  */
 public final class LodRegionSelector {
+    private static final double HYSTERESIS = 24.0;
+
     public List<VisibleRegion> select(double cameraX, double cameraZ, int renderDistanceChunks, int maxRegions) {
-        int radiusBlocks = Math.max(128, Math.max(1, renderDistanceChunks) * 16);
+        double radiusBlocks = Math.max(128.0, Math.max(1, renderDistanceChunks) * 16.0);
         int budget = Math.max(1, maxRegions);
         List<VisibleRegion> result = new ArrayList<>(Math.min(budget, 4096));
 
         for (LodLevel level : LodLevel.values()) {
-            int scale = level.scale();
-            double inner = level == LodLevel.LOD0 ? 0.0 : radiusForPrevious(level);
-            double outer = Math.min(radiusBlocks, radiusForLevel(level));
+            double inner = level == LodLevel.LOD0 ? 0.0 : radiusForPrevious(level) - HYSTERESIS;
+            double outer = Math.min(radiusBlocks, radiusForLevel(level) + HYSTERESIS);
             if (outer <= inner) continue;
 
-            long span = 32L * scale;
-            long minRx = Math.floorDiv((long) Math.floor(cameraX - outer), span);
-            long maxRx = Math.floorDiv((long) Math.floor(cameraX + outer), span);
-            long minRz = Math.floorDiv((long) Math.floor(cameraZ - outer), span);
-            long maxRz = Math.floorDiv((long) Math.floor(cameraZ + outer), span);
+            long span = level.blockSpan();
+            long minRx = Math.floorDiv((long)Math.floor(cameraX - outer), span);
+            long maxRx = Math.floorDiv((long)Math.floor(cameraX + outer), span);
+            long minRz = Math.floorDiv((long)Math.floor(cameraZ - outer), span);
+            long maxRz = Math.floorDiv((long)Math.floor(cameraZ + outer), span);
 
             for (long rz = minRz; rz <= maxRz; rz++) {
                 for (long rx = minRx; rx <= maxRx; rx++) {
-                    double centerX = rx * (double) span + span * 0.5;
-                    double centerZ = rz * (double) span + span * 0.5;
-                    double d2 = distanceSquared(centerX, centerZ, cameraX, cameraZ);
-                    double d = Math.sqrt(d2);
+                    double centerX = rx * (double)span + span * 0.5;
+                    double centerZ = rz * (double)span + span * 0.5;
+                    double d = Math.sqrt(distanceSquared(centerX, centerZ, cameraX, cameraZ));
                     double halfDiagonal = Math.sqrt(2.0) * span * 0.5;
                     if (d + halfDiagonal <= inner || d - halfDiagonal > outer) continue;
-                    result.add(new VisibleRegion(rx, rz, level, d2));
+                    result.add(new VisibleRegion(rx, rz, level, d * d));
                 }
             }
         }
 
-        result.sort(Comparator.comparingDouble(VisibleRegion::distanceSquared));
+        result.sort(Comparator.comparingDouble(VisibleRegion::distanceSquared)
+                .thenComparingInt(v -> v.level().ordinal()));
         if (result.size() > budget) return new ArrayList<>(result.subList(0, budget));
         return result;
     }
