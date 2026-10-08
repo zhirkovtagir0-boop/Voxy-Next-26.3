@@ -1,7 +1,33 @@
 # Voxy Next 26.3
 
-A clean-room, cross-loader distant-terrain renderer for Minecraft 26.3.
+Clean-room, cross-loader distant-terrain renderer for Minecraft 26.3.
 
-Target loaders: Fabric and NeoForge.
+## Targets
 
-Status: early development.
+- Fabric 26.3 / Java 25
+- NeoForge 26.3 / Java 25
+- Shared loader-neutral LOD/storage core
+
+## Rendering direction
+
+Voxy Next is designed around Minecraft 26.3's modern Blaze3D render abstraction rather than raw OpenGL. The renderer will keep near terrain on the normal Minecraft/Sodium path and use a separate voxel LOD representation for distant terrain.
+
+Planned pipeline:
+
+1. Chunk extraction on background workers.
+2. Compact material/height voxel aggregation.
+3. Hierarchical LOD regions with hysteresis.
+4. Visibility/frustum selection.
+5. GPU upload with persistent buffers where the active backend permits it.
+6. Dithered LOD transitions, fog integration and material-aware coloring.
+7. Optional Sodium integration without making Sodium a hard dependency.
+
+## Current milestone
+
+**Milestone 0 — foundation:** common LOD storage, distance budgeting, worker lifecycle, and Fabric/NeoForge 26.3 bootstraps.
+
+Next milestone is the real client-side terrain extractor and first visible LOD renderer.
+
+## Important
+
+This project is an independent implementation. It does not copy or redistribute Voxy source code.
