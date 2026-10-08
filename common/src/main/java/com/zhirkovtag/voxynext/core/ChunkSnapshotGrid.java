@@ -1,6 +1,7 @@
 package com.zhirkovtag.voxynext.core;
 
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * World-space index of chunk-column snapshots.
@@ -9,10 +10,12 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public final class ChunkSnapshotGrid {
     private final ConcurrentHashMap<Long, ChunkColumnSnapshot> chunks = new ConcurrentHashMap<>();
+    private final AtomicLong generation = new AtomicLong();
 
     public void publish(int chunkX, int chunkZ, ChunkColumnSnapshot snapshot) {
         if (snapshot == null) throw new NullPointerException("snapshot");
         chunks.put(key(chunkX, chunkZ), snapshot);
+        generation.incrementAndGet();
     }
 
     public ChunkColumnSnapshot get(int chunkX, int chunkZ) {
@@ -20,7 +23,9 @@ public final class ChunkSnapshotGrid {
     }
 
     public ChunkColumnSnapshot remove(int chunkX, int chunkZ) {
-        return chunks.remove(key(chunkX, chunkZ));
+        ChunkColumnSnapshot removed = chunks.remove(key(chunkX, chunkZ));
+        if (removed != null) generation.incrementAndGet();
+        return removed;
     }
 
     public void clear() { chunks.clear(); }
