@@ -35,7 +35,7 @@ public final class VoxyNextNeoForgeRenderer {
 
     @SubscribeEvent
     public static void extract(ExtractLevelRenderStateEvent event) {
-        Level level = event.getLevel();
+        var level = event.getLevel();
         Minecraft client = Minecraft.getInstance();
         if (level == null || client.player == null) {
             state = TerrainState.EMPTY;
@@ -72,10 +72,6 @@ public final class VoxyNextNeoForgeRenderer {
                     VoxyNextNeoForge.ENGINE.cache().get(candidate.level(),
                             Math.toIntExact(candidate.regionX()), Math.toIntExact(candidate.regionZ()));
             if (region == null) continue;
-
-            int scale = region.level().scale();
-            long baseX = region.regionX() * (long) region.blockSpan();
-            long baseZ = region.regionZ() * (long) region.blockSpan();
 
             RegionCells cached = cachedCells(region);
             for (Cell cell : cached.cells) {
@@ -182,31 +178,6 @@ public final class VoxyNextNeoForgeRenderer {
         v.addVertex(m,bx,by,bz).setColor(r,g,b,a);
         v.addVertex(m,cx,cy,cz).setColor(r,g,b,a);
         v.addVertex(m,dx,dy,dz).setColor(r,g,b,a);
-    }
-
-    private static int lodScale(double p,double c,int near) {
-        double d=Math.abs(p-c);
-        return d<near?8:d<near*2?16:32;
-    }
-
-    private static int floorTo(double v) {
-        return (int)Math.floor(v / 8.0) * 8;
-    }
-
-    private static double dist2(double x,double z,double cx,double cz) {
-        double dx=x-cx,dz=z-cz;
-        return dx*dx+dz*dz;
-    }
-
-    private static int color(BlockState s,int y) {
-        String n=s.getBlock().toString().toLowerCase(java.util.Locale.ROOT);
-        if(n.contains("water"))return 0x3F78A8;
-        if(n.contains("sand"))return 0xC9B56A;
-        if(n.contains("snow")||n.contains("ice"))return 0xDDE8EA;
-        if(n.contains("grass")||n.contains("leaves"))return 0x5F8F45;
-        if(n.contains("stone")||n.contains("deepslate"))return y<50?0x666A6B:0x777B7B;
-        if(n.contains("dirt")||n.contains("mud"))return 0x806044;
-        return y<64?0x77705D:0x748A55;
     }
 
     private record Cell(int x0,int z0,int x1,int z1,int y,int rgb) {}
