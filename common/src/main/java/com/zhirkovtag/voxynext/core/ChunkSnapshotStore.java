@@ -8,6 +8,7 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Small persistent surface cache. It lets explored terrain survive client chunk unloads,
@@ -111,6 +112,12 @@ public final class ChunkSnapshotStore implements AutoCloseable {
     @Override
     public void close() {
         writer.shutdown();
+        try {
+            if (!writer.awaitTermination(5, TimeUnit.SECONDS)) writer.shutdownNow();
+        } catch (InterruptedException e) {
+            writer.shutdownNow();
+            Thread.currentThread().interrupt();
+        }
     }
 
     private record Loaded(int chunkX, int chunkZ, ChunkColumnSnapshot snapshot) {}
