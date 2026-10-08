@@ -39,7 +39,11 @@ public final class LodBuildScheduler implements AutoCloseable {
             return CompletableFuture.completedFuture(null);
         }
 
-        return CompletableFuture.supplyAsync(() -> LodRegionBuilder.build(source, level, regionX, regionZ), executor)
+        long sourceGeneration = source.generation();
+        return CompletableFuture.supplyAsync(() -> {
+                    LodRegion region = LodRegionBuilder.build(source, level, regionX, regionZ);
+                    return source.generation() == sourceGeneration ? region : null;
+                }, executor)
                 .whenComplete((region, error) -> {
                     pending.remove(key);
                     if (error == null && region != null) {
