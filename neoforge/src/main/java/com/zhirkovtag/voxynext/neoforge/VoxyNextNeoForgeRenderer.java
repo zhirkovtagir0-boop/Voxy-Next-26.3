@@ -1,21 +1,10 @@
 package com.zhirkovtag.voxynext.neoforge;
 
-import com.mojang.blaze3d.pipeline.RenderTarget;
-import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
-import com.mojang.renderpearl.api.buffers.GpuBufferSlice;
-import com.mojang.renderpearl.api.commands.RenderPass;
-import com.mojang.renderpearl.api.pipeline.PrimitiveTopology;
-import com.mojang.renderpearl.api.pipeline.RenderPipeline;
-import com.mojang.renderpearl.api.textures.GpuTextureView;
-import com.mojang.renderpearl.api.vertex.VertexFormat;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.renderer.RenderPipelines;
-import net.minecraft.client.renderer.StagedVertexBuffer;
-import net.minecraft.client.renderer.rendertype.RenderType;
+import net.minecraft.client.renderer.RenderTypes;
 import net.minecraft.core.BlockPos;
-import net.minecraft.resources.Identifier;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.level.block.state.BlockState;
@@ -23,36 +12,18 @@ import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.client.event.ExtractLevelRenderStateEvent;
-import net.neoforged.neoforge.client.event.RenderLevelStageEvent;
+import net.neoforged.neoforge.client.event.SubmitCustomGeometryEvent;
 import org.joml.Matrix4f;
 import org.joml.Matrix4fc;
-import org.joml.Vector3f;
-import org.joml.Vector4f;
 
 import java.util.ArrayList;
-import java.util.Optional;
-import java.util.OptionalDouble;
 
 /**
- * NeoForge 26.3 distant terrain pass.
- *
- * The stage only owns extraction/draw orchestration; the actual GPU pass is
- * created against the main target, matching the cross-loader rendering path.
+ * NeoForge 26.3 distant terrain renderer using the native SubmitNode geometry path.
+ * World data is extracted first; vertex emission happens only during geometry submission.
  */
 @EventBusSubscriber(modid = "voxy_next", value = Dist.CLIENT)
 public final class VoxyNextNeoForgeRenderer {
-    private static final RenderPipeline PIPELINE = RenderPipelines.register(
-            RenderPipeline.builder(RenderPipelines.DEBUG_FILLED_SNIPPET)
-                    .withLocation(Identifier.fromNamespaceAndPath("voxy_next", "pipeline/distant_terrain"))
-                    .build()
-    );
-
-    private static final Vector4f COLOR_MODULATOR = new Vector4f(1f, 1f, 1f, 1f);
-    private static final Vector3f MODEL_OFFSET = new Vector3f();
-    private static final Matrix4f TEXTURE_MATRIX = new Matrix4f();
-    private static final StagedVertexBuffer BUFFER =
-            new StagedVertexBuffer(() -> "Voxy Next Distant Terrain", RenderType.SMALL_BUFFER_SIZE);
-
     private static volatile TerrainState state = TerrainState.EMPTY;
 
     private VoxyNextNeoForgeRenderer() {}
@@ -89,10 +60,10 @@ public final class VoxyNextNeoForgeRenderer {
                 double d2 = dist2(cx, cz, camX, camZ);
                 if (d2 > (near * .9) * (near * .9) && d2 < (far + 32.0) * (far + 32.0)) {
                     int sx = (x + nx) >> 1;
-                    int sz2 = (z + nz) >> 1;
-                    int y = level.getHeight(Heightmap.Types.WORLD_SURFACE, sx, sz2);
+                    int sz = (z + nz) >> 1;
+                    int y = level.getHeight(Heightmap.Types.WORLD_SURFACE, sx, sz);
                     if (y > level.getMinY()) {
-                        BlockPos pos = new BlockPos(sx, y, sz2);
+                        BlockPos pos = new BlockPos(sx, y, sz);
                         cells.add(new Cell(x, z, nx, nz, y, color(level.getBlockState(pos), y)));
                     }
                 }
@@ -104,53 +75,24 @@ public final class VoxyNextNeoForgeRenderer {
     }
 
     @SubscribeEvent
-    public static void draw(RenderLevelStageEvent.AfterOpaqueBlocks event) {
+    public static void submit(SubmitCustomGeometryEvent event) {
         TerrainState snapshot = state;
         if (snapshot.cells.length == 0) return;
 
-        VertexFormat format = PIPELINE.getVertexFormatBinding(0);
-        if (format == null) return;
-        PrimitiveTopology topology = PIPELINE.getPrimitiveTopology();
-        StagedVertexBuffer.Draw draw = BUFFER.appendDraw(format, topology);
-
         PoseStack pose = event.getPoseStack();
-        if (pose == null) return;
         pose.pushPose();
         pose.translate(-snapshot.cameraX, -event.getLevelRenderState().cameraRenderState.pos.y, -snapshot.cameraZ);
 
-        VertexConsumer out = BUFFER.getVertexBuilder(draw);
-        for (Cell c : snapshot.cells) addCell(out, pose.last().pose(), c);
+        event.getSubmitNodeCollector().submitCustomGeometry(
+                pose,
+                RenderTypes.solid(),
+                (entry, buffer) -> {
+                    Matrix4f matrix = entry.pose();
+                    for (Cell cell : snapshot.cells) addCell(buffer, matrix, cell);
+                }
+        );
+
         pose.popPose();
-
-        BUFFER.upload();
-        StagedVertexBuffer.ExecuteInfo info = BUFFER.getExecuteInfo(draw);
-        if (info == null || info.customIndexBuffer() == null) {
-            BUFFER.endFrame();
-            return;
-        }
-
-        Minecraft client = Minecraft.getInstance();
-        RenderTarget target = client.gameRenderer.mainRenderTarget();
-        GpuTextureView color = target.getColorTextureView();
-        if (color == null) {
-            BUFFER.endFrame();
-            return;
-        }
-
-        GpuBufferSlice transforms = RenderSystem.getDynamicUniforms()
-                .writeTransform(RenderSystem.getModelViewMatrixCopy(), COLOR_MODULATOR, MODEL_OFFSET, TEXTURE_MATRIX);
-
-        try (RenderPass pass = RenderSystem.getDevice().createCommandEncoder().createRenderPass(
-                () -> "Voxy Next distant terrain", color, Optional.empty(),
-                target.getDepthTextureView(), OptionalDouble.empty())) {
-            pass.setPipeline(RenderSystem.getCompiledPipeline(PIPELINE));
-            RenderSystem.bindDefaultUniforms(pass);
-            pass.setUniform("DynamicTransforms", transforms);
-            pass.setVertexBuffer(0, info.vertexBuffer().slice());
-            pass.setIndexBuffer(info.customIndexBuffer(), info.indexType());
-            pass.drawIndexed(info.indexCount(), 1, info.firstIndex(), info.baseVertex(), 0);
-        }
-        BUFFER.endFrame();
     }
 
     private static void addCell(VertexConsumer out, Matrix4fc m, Cell c) {
