@@ -202,7 +202,7 @@ public final class VoxyNextWorldRenderer implements ClientModInitializer {
             RenderSystem.bindDefaultUniforms(pass);
             pass.setUniform("DynamicTransforms", transforms);
             pass.setVertexBuffer(0, info.vertexBuffer().slice());
-            pass.setIndexBuffer(info.indexBuffer(), info.indexType());
+            pass.setIndexBuffer(info.customIndexBuffer(), info.indexType());
             pass.drawIndexed(info.indexCount(), 1, info.firstIndex(), info.baseVertex(), 0);
         }
     }
