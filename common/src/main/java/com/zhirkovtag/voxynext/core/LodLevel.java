@@ -6,7 +6,7 @@ public enum LodLevel {
     private final int scale;
     LodLevel(int scale) { this.scale = scale; }
     public int scale() { return scale; }
-    public int blockSpan() { return 16 * scale; }
+    public int blockSpan() { return LodRegion.SIZE * scale; }
 
     public static LodLevel forDistance(double blocks) {
         if (blocks < 128) return LOD0;
