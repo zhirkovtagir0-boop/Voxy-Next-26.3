@@ -31,12 +31,12 @@ public final class LodBuildScheduler implements AutoCloseable {
     }
 
     public CompletableFuture<LodRegion> request(LodLevel level, long regionX, long regionZ) {
-        LodRegion existing = cache.get(level, Math.toIntExact(regionX), Math.toIntExact(regionZ));
+        LodRegion existing = cache.get(level, regionX, regionZ);
         if (existing != null) return CompletableFuture.completedFuture(existing);
 
         Key key = new Key(level, regionX, regionZ);
         if (!pending.add(key)) {
-            return CompletableFuture.completedFuture(null);
+            return CompletableFuture.completedFuture(cache.get(level, regionX, regionZ));
         }
 
         long sourceGeneration = source.generation();
