@@ -22,7 +22,7 @@ final class VoxyNextChunkIngestor {
 
         for (int z = 0; z < 16; z++) {
             for (int x = 0; x < 16; x++) {
-                int y = chunk.getHeight(Heightmap.Types.WORLD_SURFACE, x, z);
+                int y = chunk.getHeight(Heightmap.Types.WORLD_SURFACE, x, z) - 1;
                 if (y < minY || y > minY + height - 1) continue;
                 var state = chunk.getBlockState(new net.minecraft.core.BlockPos(baseX + x, y, baseZ + z));
                 if (state.isAir()) continue;
