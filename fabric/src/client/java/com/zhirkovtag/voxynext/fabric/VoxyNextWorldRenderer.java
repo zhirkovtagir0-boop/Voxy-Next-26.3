@@ -57,6 +57,10 @@ public final class VoxyNextWorldRenderer implements ClientModInitializer {
     private static final LodRegionSelector SELECTOR = new LodRegionSelector();
 
     private static volatile TerrainState state = TerrainState.EMPTY;
+    private static double lastBuildCameraX = Double.NaN;
+    private static double lastBuildCameraZ = Double.NaN;
+    private static int lastBuildDistance = -1;
+    private static long lastBuildGeneration = Long.MIN_VALUE;
 
     @Override
     public void onInitializeClient() {
@@ -68,6 +72,7 @@ public final class VoxyNextWorldRenderer implements ClientModInitializer {
         Minecraft client = Minecraft.getInstance();
         if (client.level == null || client.player == null) {
             state = TerrainState.EMPTY;
+            lastBuildCameraX = Double.NaN;
             VoxyNextFabric.ENGINE.clearWorld();
             return;
         }
@@ -77,6 +82,17 @@ public final class VoxyNextWorldRenderer implements ClientModInitializer {
         int renderDistanceChunks = Math.max(
                 client.options.getEffectiveRenderDistance(),
                 VoxyNextFabric.ENGINE.budget().renderDistanceChunks());
+
+        long cacheGeneration = VoxyNextFabric.ENGINE.cache().generation();
+        boolean reuse = !Double.isNaN(lastBuildCameraX)
+                && Math.abs(camX - lastBuildCameraX) < 8.0
+                && Math.abs(camZ - lastBuildCameraZ) < 8.0
+                && renderDistanceChunks == lastBuildDistance
+                && cacheGeneration == lastBuildGeneration;
+        if (reuse) {
+            state = new TerrainState(camX, camZ, state.cells);
+            return;
+        }
 
         List<VisibleRegion> visible = SELECTOR.select(
                 camX, camZ, renderDistanceChunks,
@@ -109,7 +125,12 @@ public final class VoxyNextWorldRenderer implements ClientModInitializer {
             if (cells.size() >= 30000) break;
         }
 
-        state = new TerrainState(camX, camZ, cells.toArray(Cell[]::new));
+        Cell[] builtCells = cells.toArray(Cell[]::new);
+        state = new TerrainState(camX, camZ, builtCells);
+        lastBuildCameraX = camX;
+        lastBuildCameraZ = camZ;
+        lastBuildDistance = renderDistanceChunks;
+        lastBuildGeneration = cacheGeneration;
     }
 
     private static void draw(LevelRenderContext context) {
