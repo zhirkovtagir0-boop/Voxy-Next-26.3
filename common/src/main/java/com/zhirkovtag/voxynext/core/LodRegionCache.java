@@ -10,23 +10,33 @@ import java.util.concurrent.atomic.AtomicLong;
 public final class LodRegionCache {
     private final ConcurrentHashMap<Long, LodRegion> regions = new ConcurrentHashMap<>();
     private final AtomicLong generation = new AtomicLong();
+    private final ConcurrentHashMap<Long, Long> lastAccess = new ConcurrentHashMap<>();
+    private final AtomicLong accessClock = new AtomicLong();
 
     public LodRegion get(LodLevel level, long regionX, long regionZ) {
         if (regionX < Integer.MIN_VALUE || regionX > Integer.MAX_VALUE ||
                 regionZ < Integer.MIN_VALUE || regionZ > Integer.MAX_VALUE) return null;
-        return regions.get(key(level, (int)regionX, (int)regionZ));
+        long key = key(level, (int)regionX, (int)regionZ);
+        LodRegion region = regions.get(key);
+        if (region != null) lastAccess.put(key, accessClock.incrementAndGet());
+        return region;
     }
 
     public void publish(LodRegion region) {
-        regions.put(key(region.level(), region.regionX(), region.regionZ()), region);
+        long key = key(region.level(), region.regionX(), region.regionZ());
+        regions.put(key, region);
+        lastAccess.put(key, accessClock.incrementAndGet());
         generation.incrementAndGet();
     }
 
     public void invalidate(LodLevel level, long regionX, long regionZ) {
         if (regionX < Integer.MIN_VALUE || regionX > Integer.MAX_VALUE ||
                 regionZ < Integer.MIN_VALUE || regionZ > Integer.MAX_VALUE) return;
-        regions.remove(key(level, (int)regionX, (int)regionZ));
-        generation.incrementAndGet();
+        long key = key(level, (int)regionX, (int)regionZ);
+        if (regions.remove(key) != null) {
+            lastAccess.remove(key);
+            generation.incrementAndGet();
+        }
     }
 
     public void invalidateAroundChunk(int chunkX, int chunkZ) {
@@ -58,6 +68,24 @@ public final class LodRegionCache {
 
     public int size() { return regions.size(); }
     public long generation() { return generation.get(); }
+
+    /** Keeps the hottest regions and evicts the coldest entries without blocking readers. */
+    public void trimTo(int maximum) {
+        int limit = Math.max(128, maximum);
+        while (regions.size() > limit) {
+            long coldKey = 0L;
+            long coldStamp = Long.MAX_VALUE;
+            for (var entry : lastAccess.entrySet()) {
+                if (entry.getValue() < coldStamp) {
+                    coldStamp = entry.getValue();
+                    coldKey = entry.getKey();
+                }
+            }
+            if (coldStamp == Long.MAX_VALUE) return;
+            lastAccess.remove(coldKey);
+            regions.remove(coldKey);
+        }
+    }
 
     private static long key(LodLevel level, int x, int z) {
         long levelBits = ((long)level.ordinal()) << 58;
