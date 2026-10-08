@@ -33,7 +33,7 @@ public final class VoxyNextEngine implements AutoCloseable {
         this.budget = budget;
         if (running.get()) {
             LodBuildScheduler old = scheduler;
-            scheduler = new LodBuildScheduler(source, cache, budget.workerCount());
+            scheduler = new LodBuildScheduler(source, cache, budget.workerCount(), budget.maxRegionsInMemory());
             old.close();
         }
     }
