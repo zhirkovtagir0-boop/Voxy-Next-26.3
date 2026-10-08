@@ -10,7 +10,6 @@ public final class ChunkSnapshotStoreTest {
 
         try (ChunkSnapshotStore store = new ChunkSnapshotStore(dir)) {
             store.save(-12, 34, snapshot);
-            Thread.sleep(100);
         }
 
         ChunkSnapshotGrid grid = new ChunkSnapshotGrid();
