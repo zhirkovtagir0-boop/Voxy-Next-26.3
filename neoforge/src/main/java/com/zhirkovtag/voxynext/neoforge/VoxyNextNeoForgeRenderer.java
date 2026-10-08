@@ -79,13 +79,22 @@ public final class VoxyNextNeoForgeRenderer {
             long baseZ = region.regionZ() * (long) region.blockSpan();
 
             for (int z = 0; z < com.zhirkovtag.voxynext.core.LodRegion.SIZE && cells.size() < 30000; z++) {
-                for (int x = 0; x < com.zhirkovtag.voxynext.core.LodRegion.SIZE && cells.size() < 30000; x++) {
-                    com.zhirkovtag.voxynext.core.VoxelCell cell = region.get(x, z);
-                    if (cell == null || cell.packedMaterial() == 0) continue;
+                int x = 0;
+                while (x < com.zhirkovtag.voxynext.core.LodRegion.SIZE && cells.size() < 30000) {
+                    com.zhirkovtag.voxynext.core.VoxelCell first = region.get(x, z);
+                    if (first == null || first.packedMaterial() == 0) { x++; continue; }
+                    int endX = x + 1;
+                    while (endX < com.zhirkovtag.voxynext.core.LodRegion.SIZE) {
+                        com.zhirkovtag.voxynext.core.VoxelCell next = region.get(endX, z);
+                        if (next == null || next.packedMaterial() != first.packedMaterial() || next.maxY() != first.maxY()) break;
+                        endX++;
+                    }
                     int x0 = Math.toIntExact(baseX + (long)x * scale);
                     int z0 = Math.toIntExact(baseZ + (long)z * scale);
-                    cells.add(new Cell(x0, z0, x0 + scale, z0 + scale,
-                            cell.maxY(), VoxyNextNeoForge.ENGINE.palette().color(cell.packedMaterial())));
+                    int x1 = Math.toIntExact(baseX + (long)endX * scale);
+                    cells.add(new Cell(x0, z0, x1, z0 + scale, first.maxY(),
+                            VoxyNextNeoForge.ENGINE.palette().color(first.packedMaterial())));
+                    x = endX;
                 }
             }
             if (cells.size() >= 30000) break;
