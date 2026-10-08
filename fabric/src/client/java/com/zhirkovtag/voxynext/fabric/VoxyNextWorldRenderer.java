@@ -68,6 +68,11 @@ public final class VoxyNextWorldRenderer implements ClientModInitializer {
         LevelRenderEvents.AFTER_OPAQUE_TERRAIN.register(VoxyNextWorldRenderer::draw);
     }
 
+    public static void close() {
+        BUFFER.close();
+        state = TerrainState.EMPTY;
+    }
+
     private static void extract(LevelExtractionContext context) {
         Minecraft client = Minecraft.getInstance();
         if (client.level == null || client.player == null) {
