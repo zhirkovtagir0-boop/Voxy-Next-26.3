@@ -10,7 +10,7 @@ Clean-room, cross-loader distant-terrain renderer for Minecraft 26.3.
 
 ## Rendering direction
 
-Voxy Next is designed around Minecraft 26.3's modern Blaze3D render abstraction rather than raw OpenGL. The renderer will keep near terrain on the normal Minecraft/Sodium path and use a separate voxel LOD representation for distant terrain.
+Voxy Next is designed around Minecraft 26.3's modern Renderpearl/Blaze3D render abstraction rather than raw OpenGL. The renderer will keep near terrain on the normal Minecraft/Sodium path and use a separate voxel LOD representation for distant terrain.
 
 Planned pipeline:
 
@@ -24,9 +24,9 @@ Planned pipeline:
 
 ## Current milestone
 
-**Milestone 0 — foundation:** common LOD storage, distance budgeting, worker lifecycle, and Fabric/NeoForge 26.3 bootstraps.
+**Milestone 1 — first visible terrain pass:** Fabric now has a real extraction/drawing path that samples loaded world terrain, builds distance-scaled coarse cells, and submits a distant terrain mesh through a custom render pipeline. The pass is intentionally a stepping stone: its height-field sampler will be replaced by the shared voxel-region cache once the cache is wired to chunk lifecycle events.
 
-Next milestone is the real client-side terrain extractor and first visible LOD renderer.
+NeoForge has the 26.3 bootstrap and is the next renderer port target.
 
 ## Important
 
