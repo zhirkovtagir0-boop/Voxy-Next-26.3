@@ -1,7 +1,7 @@
 package com.zhirkovtag.voxynext.core;
 
 /**
- * Builds one fixed 32x32 LOD region from world-space chunk snapshots.
+ * Builds one fixed 16x16 LOD region from world-space chunk snapshots.
  *
  * For close LODs every source column is sampled. Farther LODs use a bounded
  * sample grid per cell, keeping generation cost effectively constant as the
