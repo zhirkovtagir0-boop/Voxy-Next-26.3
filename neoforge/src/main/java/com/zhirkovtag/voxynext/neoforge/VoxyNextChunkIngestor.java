@@ -15,8 +15,8 @@ final class VoxyNextChunkIngestor {
         int height = chunk.getHeight();
         ChunkColumnSnapshot snapshot = new ChunkColumnSnapshot(minY, height);
 
-        int chunkX = chunk.getPos().x;
-        int chunkZ = chunk.getPos().z;
+        int chunkX = chunk.getPos().x();
+        int chunkZ = chunk.getPos().z();
         int baseX = chunkX << 4;
         int baseZ = chunkZ << 4;
 
