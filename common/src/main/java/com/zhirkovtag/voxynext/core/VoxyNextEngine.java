@@ -12,6 +12,7 @@ public final class VoxyNextEngine implements AutoCloseable {
     private final AtomicBoolean running = new AtomicBoolean();
     private final ChunkSnapshotGrid source = new ChunkSnapshotGrid();
     private final LodRegionCache cache = new LodRegionCache();
+    private final MaterialPalette palette = new MaterialPalette();
     private volatile DistanceBudget budget =
             new DistanceBudget(64, Math.max(1, Runtime.getRuntime().availableProcessors() - 2), 32_768);
     private volatile LodBuildScheduler scheduler;
@@ -25,6 +26,7 @@ public final class VoxyNextEngine implements AutoCloseable {
     public DistanceBudget budget() { return budget; }
     public ChunkSnapshotGrid source() { return source; }
     public LodRegionCache cache() { return cache; }
+    public MaterialPalette palette() { return palette; }
 
     public synchronized void setBudget(DistanceBudget budget) {
         if (budget == null) throw new IllegalArgumentException("budget");
