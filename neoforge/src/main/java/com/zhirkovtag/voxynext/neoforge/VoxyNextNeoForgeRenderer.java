@@ -24,6 +24,8 @@ import java.util.ArrayList;
  */
 @EventBusSubscriber(modid = "voxy_next", value = Dist.CLIENT)
 public final class VoxyNextNeoForgeRenderer {
+    private static final com.zhirkovtag.voxynext.core.LodRegionSelector SELECTOR =
+            new com.zhirkovtag.voxynext.core.LodRegionSelector();
     private static volatile TerrainState state = TerrainState.EMPTY;
 
     private VoxyNextNeoForgeRenderer() {}
@@ -40,36 +42,37 @@ public final class VoxyNextNeoForgeRenderer {
 
         double camX = event.getCamera().getPosition().x;
         double camZ = event.getCamera().getPosition().z;
-        int nearChunks = Math.max(12, client.options.getEffectiveRenderDistance());
-        int near = nearChunks * 16;
-        int far = Math.min(4096, Math.max(1024, near * 4));
-        int minX = floorTo(camX - far);
-        int maxX = floorTo(camX + far);
-        int minZ = floorTo(camZ - far);
-        int maxZ = floorTo(camZ + far);
+        int renderDistanceChunks = Math.max(
+                client.options.getEffectiveRenderDistance() * 16,
+                VoxyNextNeoForge.ENGINE.budget().renderDistanceChunks());
 
-        ArrayList<Cell> cells = new ArrayList<>(8192);
-        for (int z = minZ; z < maxZ && cells.size() < 12000; ) {
-            int sz = lodScale(z + 1, camZ, near);
-            int nz = Math.min(maxZ, z + sz);
-            for (int x = minX; x < maxX && cells.size() < 12000; ) {
-                int scale = Math.min(32, Math.max(sz, lodScale(x + 1, camX, near)));
-                int nx = Math.min(maxX, x + scale);
-                double cx = (x + nx) * 0.5;
-                double cz = (z + nz) * 0.5;
-                double d2 = dist2(cx, cz, camX, camZ);
-                if (d2 > (near * .9) * (near * .9) && d2 < (far + 32.0) * (far + 32.0)) {
-                    int sx = (x + nx) >> 1;
-                    int sz = (z + nz) >> 1;
-                    int y = level.getHeight(Heightmap.Types.WORLD_SURFACE, sx, sz);
-                    if (y > level.getMinY()) {
-                        BlockPos pos = new BlockPos(sx, y, sz);
-                        cells.add(new Cell(x, z, nx, nz, y, color(level.getBlockState(pos), y)));
-                    }
+        java.util.List<com.zhirkovtag.voxynext.core.VisibleRegion> visible =
+                SELECTOR.select(camX, camZ, renderDistanceChunks,
+                        Math.min(VoxyNextNeoForge.ENGINE.budget().maxRegionsInMemory(), 4096));
+
+        java.util.ArrayList<Cell> cells = new java.util.ArrayList<>(30000);
+        for (com.zhirkovtag.voxynext.core.VisibleRegion candidate : visible) {
+            VoxyNextNeoForge.ENGINE.requestRegion(candidate.level(), candidate.regionX(), candidate.regionZ());
+            com.zhirkovtag.voxynext.core.LodRegion region =
+                    VoxyNextNeoForge.ENGINE.cache().get(candidate.level(),
+                            Math.toIntExact(candidate.regionX()), Math.toIntExact(candidate.regionZ()));
+            if (region == null) continue;
+
+            int scale = region.level().scale();
+            long baseX = region.regionX() * (long) region.blockSpan();
+            long baseZ = region.regionZ() * (long) region.blockSpan();
+
+            for (int z = 0; z < com.zhirkovtag.voxynext.core.LodRegion.SIZE && cells.size() < 30000; z++) {
+                for (int x = 0; x < com.zhirkovtag.voxynext.core.LodRegion.SIZE && cells.size() < 30000; x++) {
+                    com.zhirkovtag.voxynext.core.VoxelCell cell = region.get(x, z);
+                    if (cell == null || cell.packedMaterial() == 0) continue;
+                    int x0 = Math.toIntExact(baseX + (long)x * scale);
+                    int z0 = Math.toIntExact(baseZ + (long)z * scale);
+                    cells.add(new Cell(x0, z0, x0 + scale, z0 + scale,
+                            cell.maxY(), VoxyNextNeoForge.ENGINE.palette().color(cell.packedMaterial())));
                 }
-                x = nx;
             }
-            z = nz;
+            if (cells.size() >= 30000) break;
         }
         state = new TerrainState(camX, camZ, cells.toArray(Cell[]::new));
     }
