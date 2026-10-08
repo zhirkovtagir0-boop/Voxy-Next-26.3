@@ -45,6 +45,6 @@ public final class VoxelAggregator {
         }
 
         if (maxY < source.minY() || dominant == MaterialPalette.AIR) return new VoxelCell(0, 0, 0, 0);
-        return new VoxelCell(dominant, minY, maxY, VoxelCell.SOLID);
+        return new VoxelCell(dominant, minY, maxY, VoxelCell.FLAG_SOLID);
     }
 }
