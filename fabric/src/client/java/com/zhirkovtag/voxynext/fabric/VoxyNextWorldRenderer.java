@@ -58,13 +58,13 @@ public final class VoxyNextWorldRenderer implements ClientModInitializer {
 
     @Override
     public void onInitializeClient() {
-        // END_EXTRACTION runs before level drawing opens terrain render passes. Iris/Nvidium
-        // may keep a render pass active even during START_MAIN, so do uploads here instead.
-        net.fabricmc.fabric.api.client.rendering.v1.level.LevelExtractionEvents.END_EXTRACTION.register(context -> {
-            extract(context);
+        net.fabricmc.fabric.api.client.rendering.v1.level.LevelExtractionEvents.END_EXTRACTION.register(VoxyNextWorldRenderer::extract);
+        // Iris/Sodium/Nvidium can keep a terrain render pass active during terrain events.
+        // END_MAIN runs after the main pass, so stage uploads and our own pass are not nested.
+        LevelRenderEvents.END_MAIN.register(context -> {
             upload();
+            draw();
         });
-        LevelRenderEvents.AFTER_OPAQUE_TERRAIN.register(VoxyNextWorldRenderer::draw);
     }
 
     public static void close() {
@@ -149,13 +149,12 @@ public final class VoxyNextWorldRenderer implements ClientModInitializer {
         VertexConsumer out = BUFFER.getVertexBuilder(draw);
         for (Cell cell : snapshot.cells) addCell(out, cameraMatrix, cell);
 
-        // This method runs from END_EXTRACTION, before terrain rendering opens a pass,
-        // so StagedVertexBuffer.upload() can issue its buffer-copy commands safely.
+        // Called from END_MAIN after the terrain render pass has finished.
         BUFFER.upload();
         uploadedDraw = draw;
     }
 
-    private static void draw(LevelTerrainRenderContext context) {
+    private static void draw() {
         StagedVertexBuffer.Draw draw = uploadedDraw;
         if (draw == null) return;
 
