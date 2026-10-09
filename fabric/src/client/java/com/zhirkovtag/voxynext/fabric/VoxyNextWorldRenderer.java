@@ -75,9 +75,10 @@ public final class VoxyNextWorldRenderer implements ClientModInitializer {
     private static void extract(LevelExtractionContext context) {
         Minecraft client = Minecraft.getInstance();
         if (client.level == null || client.player == null) {
+            // Keep snapshots in memory while at the title screen. The next world's
+            // attachStore() call will switch/clear them only if its store key changes.
             state = TerrainState.EMPTY;
             lastBuildCameraX = Double.NaN;
-            VoxyNextFabric.ENGINE.clearWorld();
             return;
         }
 
@@ -208,7 +209,9 @@ public final class VoxyNextWorldRenderer implements ClientModInitializer {
                 int x0 = Math.toIntExact(baseX + (long) x * scale);
                 int z0 = Math.toIntExact(baseZ + (long) z * scale);
                 int x1 = Math.toIntExact(baseX + (long) endX * scale);
-                cells.add(new Cell(x0, z0, x1, z0 + scale, first.maxY(),
+                // Snapshot maxY is the Y of the top block, but the visible
+                // terrain surface lies on its upper face (Y + 1).
+                cells.add(new Cell(x0, z0, x1, z0 + scale, first.maxY() + 1,
                         VoxyNextFabric.ENGINE.palette().color(first.packedMaterial())));
                 x = endX;
             }
