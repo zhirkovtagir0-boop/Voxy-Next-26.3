@@ -58,9 +58,12 @@ public final class VoxyNextWorldRenderer implements ClientModInitializer {
 
     @Override
     public void onInitializeClient() {
-        net.fabricmc.fabric.api.client.rendering.v1.level.LevelExtractionEvents.END_EXTRACTION.register(VoxyNextWorldRenderer::extract);
-        // GPU uploads must happen before Minecraft opens the terrain render pass.
-        LevelRenderEvents.START_MAIN.register(VoxyNextWorldRenderer::upload);
+        // END_EXTRACTION runs before level drawing opens terrain render passes. Iris/Nvidium
+        // may keep a render pass active even during START_MAIN, so do uploads here instead.
+        net.fabricmc.fabric.api.client.rendering.v1.level.LevelExtractionEvents.END_EXTRACTION.register(context -> {
+            extract(context);
+            upload();
+        });
         LevelRenderEvents.AFTER_OPAQUE_TERRAIN.register(VoxyNextWorldRenderer::draw);
     }
 
@@ -122,9 +125,15 @@ public final class VoxyNextWorldRenderer implements ClientModInitializer {
         lastBuildGeneration = cacheGeneration;
     }
 
-    private static void upload(LevelTerrainRenderContext context) {
+    private static void upload() {
+        // Normally the previous draw closes its frame. Clean up defensively if a renderer
+        // skipped the opaque-terrain callback (for example when changing worlds).
+        if (uploadedDraw != null) {
+            BUFFER.endFrame();
+            uploadedDraw = null;
+        }
+
         TerrainState snapshot = state;
-        uploadedDraw = null;
         if (snapshot.cells.length == 0) return;
 
         VertexFormat format = TERRAIN_PIPELINE.getVertexFormatBinding(0);
@@ -149,34 +158,32 @@ public final class VoxyNextWorldRenderer implements ClientModInitializer {
     private static void draw(LevelTerrainRenderContext context) {
         StagedVertexBuffer.Draw draw = uploadedDraw;
         if (draw == null) return;
-        StagedVertexBuffer.ExecuteInfo info = BUFFER.getExecuteInfo(draw);
-        if (info == null) {
+
+        try {
+            StagedVertexBuffer.ExecuteInfo info = BUFFER.getExecuteInfo(draw);
+            if (info == null) return;
+
+            GpuBufferSlice transforms = RenderSystem.getDynamicUniforms()
+                    .writeTransform(RenderSystem.getModelViewMatrixCopy(), COLOR_MODULATOR, MODEL_OFFSET, TEXTURE_MATRIX);
+
+            RenderTarget target = Minecraft.getInstance().gameRenderer.mainRenderTarget();
+            var color = target.getColorTextureView();
+            if (color == null) return;
+
+            try (RenderPass pass = RenderSystem.getDevice().createCommandEncoder().createRenderPass(
+                    () -> "Voxy Next distant terrain", color, Optional.empty(),
+                    target.getDepthTextureView(), OptionalDouble.empty())) {
+                pass.setPipeline(RenderSystem.getCompiledPipeline(TERRAIN_PIPELINE));
+                RenderSystem.bindDefaultUniforms(pass);
+                pass.setUniform("DynamicTransforms", transforms);
+                pass.setVertexBuffer(0, info.vertexBuffer().slice());
+                pass.setIndexBuffer(info.indexBuffer(), info.indexType());
+                pass.drawIndexed(info.indexCount(), 1, info.firstIndex(), info.baseVertex(), 0);
+            }
+        } finally {
             BUFFER.endFrame();
-            return;
+            uploadedDraw = null;
         }
-
-        GpuBufferSlice transforms = RenderSystem.getDynamicUniforms()
-                .writeTransform(RenderSystem.getModelViewMatrixCopy(), COLOR_MODULATOR, MODEL_OFFSET, TEXTURE_MATRIX);
-
-        RenderTarget target = Minecraft.getInstance().gameRenderer.mainRenderTarget();
-        var color = target.getColorTextureView();
-        if (color == null) {
-            BUFFER.endFrame();
-            return;
-        }
-
-        try (RenderPass pass = RenderSystem.getDevice().createCommandEncoder().createRenderPass(
-                () -> "Voxy Next distant terrain", color, Optional.empty(),
-                target.getDepthTextureView(), OptionalDouble.empty())) {
-            pass.setPipeline(RenderSystem.getCompiledPipeline(TERRAIN_PIPELINE));
-            RenderSystem.bindDefaultUniforms(pass);
-            pass.setUniform("DynamicTransforms", transforms);
-            pass.setVertexBuffer(0, info.vertexBuffer().slice());
-            pass.setIndexBuffer(info.indexBuffer(), info.indexType());
-            pass.drawIndexed(info.indexCount(), 1, info.firstIndex(), info.baseVertex(), 0);
-        }
-        BUFFER.endFrame();
-        uploadedDraw = null;
     }
 
     private static RegionCells cachedCells(LodRegion region) {
