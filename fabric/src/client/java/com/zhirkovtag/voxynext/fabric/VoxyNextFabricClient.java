@@ -23,7 +23,18 @@ public final class VoxyNextFabricClient implements ClientModInitializer {
                 return;
             }
 
-            String serverKey = client.getCurrentServer() == null ? "singleplayer" : client.getCurrentServer().ip;
+            String serverKey;
+            if (client.getSingleplayerServer() != null) {
+                // A constant "singleplayer" key mixes terrain snapshots from every local save.
+                var saveRoot = client.getSingleplayerServer()
+                        .getWorldPath(net.minecraft.world.level.storage.LevelResource.ROOT)
+                        .toAbsolutePath().normalize();
+                String worldName = saveRoot.getFileName() == null ? "world" : saveRoot.getFileName().toString();
+                String worldHash = Integer.toUnsignedString(saveRoot.toString().hashCode(), 16);
+                serverKey = "singleplayer_" + worldName + "_" + worldHash;
+            } else {
+                serverKey = client.getCurrentServer() == null ? "unknown_server" : client.getCurrentServer().ip;
+            }
             String dimensionKey = client.level.dimension().identifier().toString();
             String safeKey = (serverKey + "_" + dimensionKey).replaceAll("[^a-zA-Z0-9._-]", "_");
 
