@@ -149,8 +149,8 @@ public final class VoxyNextWorldRenderer implements ClientModInitializer {
         VertexConsumer out = BUFFER.getVertexBuilder(draw);
         for (Cell cell : snapshot.cells) addCell(out, cameraMatrix, cell);
 
-        // START_MAIN is outside the active terrain render pass, so command-buffer
-        // copies performed by StagedVertexBuffer.upload() are legal here.
+        // This method runs from END_EXTRACTION, before terrain rendering opens a pass,
+        // so StagedVertexBuffer.upload() can issue its buffer-copy commands safely.
         BUFFER.upload();
         uploadedDraw = draw;
     }
